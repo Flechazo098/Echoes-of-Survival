@@ -1,0 +1,19 @@
+{
+  "id": "echoes:scavenger",
+  "initial_equipment": {
+    "main_hand": "minecraft:stone_sword",
+    "armor_set": "echoes:scavenger_tier_1",
+    "tactical_items": [
+      "minecraft:regeneration"
+    ]
+  },
+  "logic": {
+    "trade_pools": [
+      "echoes:scavenger_goods"
+    ],
+    "quest_pools": [
+      "echoes:scavenger_tasks"
+    ],
+    "reputation_on_death": -20
+  }
+}

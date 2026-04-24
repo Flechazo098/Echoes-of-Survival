@@ -1,0 +1,21 @@
+{
+  "id": "echoes:mechanic",
+  "initial_equipment": {
+    "main_hand": "minecraft:iron_axe",
+    "armor_set": "echoes:scavenger_tier_1",
+    "tactical_items": [
+      "minecraft:totem_of_undying",
+      "minecraft:regeneration"
+    ]
+  },
+  "logic": {
+    "trade_pools": [
+      "echoes:mechanic_tools"
+    ],
+    "quest_pools": [
+      "echoes:mechanic_tasks"
+    ],
+    "reputation_on_death": -40
+  }
+}
+

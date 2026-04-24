@@ -1,0 +1,19 @@
+{
+  "quest_id": "echoes:medic_delivery",
+  "title": "quest.echoes.medic_delivery.title",
+  "description": "quest.echoes.medic_delivery.desc",
+  "type": "echoes:submit_items",
+  "objectives": [
+    {
+      "item": "minecraft:glass_bottle",
+      "count": 10
+    }
+  ],
+  "rewards": {
+    "items": [
+      { "item": "minecraft:gold_nugget", "count": 5 }
+    ],
+    "reputation": 15
+  }
+}
+

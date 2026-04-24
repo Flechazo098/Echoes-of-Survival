@@ -1,0 +1,20 @@
+{
+  "quest_id": "echoes:clear_raiders",
+  "title": "quest.echoes.clear_raiders.title",
+  "description": "quest.echoes.clear_raiders.desc",
+  "type": "echoes:kill_entities",
+  "require_reputation": 510,
+  "objectives": [
+    {
+      "entity": "echoes:hostile_survivor",
+      "count": 5
+    }
+  ],
+  "rewards": {
+    "items": [
+      { "item": "minecraft:iron_ingot", "count": 2 }
+    ],
+    "reputation": 40
+  }
+}
+
