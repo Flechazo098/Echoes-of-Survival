@@ -6,14 +6,8 @@ import com.flechazo.eos.data.armor.ArmorSetDefinition;
 import com.flechazo.eos.data.reputation.ReputationTiersDefinition;
 import com.flechazo.eos.data.trade.ProfessionDefinition;
 import com.flechazo.eos.data.trade.TradePoolDefinition;
-import com.flechazo.eos.entity.ai.goal.OpenFenceGoal;
-import com.flechazo.eos.entity.ai.goal.SurvivorAvoidCreeperGoal;
-import com.flechazo.eos.entity.ai.goal.SurvivorEatFoodGoal;
-import com.flechazo.eos.entity.ai.goal.SurvivorFleeGoal;
-import com.flechazo.eos.entity.ai.goal.SurvivorLadderClimbGoal;
-import com.flechazo.eos.entity.ai.goal.SurvivorRaiseShieldGoal;
-import com.flechazo.eos.entity.ai.goal.SurvivorUseTacticalEffectGoal;
-import com.flechazo.eos.entity.ai.goal.SurvivorWeaponSwitchGoal;
+import com.flechazo.eos.entity.ai.goal.*;
+import com.flechazo.eos.menu.SurvivorQuestMenu;
 import com.flechazo.eos.reputation.ReputationApi;
 import com.flechazo.eos.reputation.ReputationTiers;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -23,50 +17,36 @@ import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.stats.Stats;
+import net.minecraft.world.DifficultyInstance;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
-import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.entity.Mob;
-import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
-import net.minecraft.world.entity.ai.goal.FloatGoal;
-import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
-import net.minecraft.world.entity.ai.goal.OpenDoorGoal;
-import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
-import net.minecraft.world.entity.ai.goal.RandomStrollGoal;
-import net.minecraft.world.entity.ai.goal.RangedBowAttackGoal;
-import net.minecraft.world.entity.ai.goal.RangedCrossbowAttackGoal;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.ai.goal.*;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
-import net.minecraft.world.entity.monster.CrossbowAttackMob;
 import net.minecraft.world.entity.monster.Monster;
-import net.minecraft.world.entity.monster.RangedAttackMob;
-import net.minecraft.world.entity.npc.WanderingTrader;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.npc.AbstractVillager;
-import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResult;
-import com.flechazo.eos.menu.SurvivorQuestMenu;
 import net.minecraft.world.entity.projectile.AbstractArrow;
 import net.minecraft.world.entity.projectile.ProjectileUtil;
-import net.minecraft.world.item.BowItem;
-import net.minecraft.world.item.CrossbowItem;
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.item.TridentItem;
-import net.minecraft.world.item.trading.MerchantOffer;
+import net.minecraft.world.item.*;
 import net.minecraft.world.item.trading.ItemCost;
+import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.item.trading.MerchantOffers;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ServerLevelAccessor;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
-public class FriendlySurvivorEntity extends WanderingTrader implements RangedAttackMob, CrossbowAttackMob {
+public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     private static final EntityDataAccessor<String> PROFESSION_ID =
             SynchedEntityData.defineId(FriendlySurvivorEntity.class, EntityDataSerializers.STRING);
     private static final EntityDataAccessor<String> SKIN_UUID =
@@ -76,11 +56,11 @@ public class FriendlySurvivorEntity extends WanderingTrader implements RangedAtt
     private static final String NBT_SKIN_UUID = "EosSkinUuid";
 
     private final List<Integer> offerReputationGains = new ArrayList<>();
-    private final List<ResourceLocation> tacticalEffects = new ArrayList<>();
+    public final net.neoforged.neoforge.items.ItemStackHandler tacticalInventory = new net.neoforged.neoforge.items.ItemStackHandler(9);
     private boolean chargingCrossbow = false;
     private int lastCombatTick = -100000;
 
-    public FriendlySurvivorEntity(EntityType<? extends WanderingTrader> type, Level level) {
+    public FriendlySurvivorEntity(EntityType<? extends AbstractSurvivorEntity> type, Level level) {
         super(type, level);
         this.setCanPickUpLoot(true);
         if (this.getNavigation() instanceof GroundPathNavigation nav) {
@@ -90,7 +70,7 @@ public class FriendlySurvivorEntity extends WanderingTrader implements RangedAtt
     }
 
     @Override
-    public net.minecraft.world.entity.SpawnGroupData finalizeSpawn(ServerLevelAccessor level, net.minecraft.world.DifficultyInstance difficulty, MobSpawnType spawnType, net.minecraft.world.entity.SpawnGroupData groupData) {
+    public SpawnGroupData finalizeSpawn(ServerLevelAccessor level, DifficultyInstance difficulty, MobSpawnType spawnType, SpawnGroupData groupData) {
         var data = super.finalizeSpawn(level, difficulty, spawnType, groupData);
         ensureProfessionAssigned();
         applyInitialEquipmentIfNeeded();
@@ -99,10 +79,10 @@ public class FriendlySurvivorEntity extends WanderingTrader implements RangedAtt
 
     public static AttributeSupplier.Builder createAttributes() {
         return Mob.createMobAttributes()
-                .add(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH, 20.0)
-                .add(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED, 0.30)
-                .add(net.minecraft.world.entity.ai.attributes.Attributes.FOLLOW_RANGE, 24.0)
-                .add(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE, 3.0);
+                .add(Attributes.MAX_HEALTH, 20.0)
+                .add(Attributes.MOVEMENT_SPEED, 0.35)
+                .add(Attributes.FOLLOW_RANGE, 24.0)
+                .add(Attributes.ATTACK_DAMAGE, 3.0);
     }
 
     @Override
@@ -114,8 +94,6 @@ public class FriendlySurvivorEntity extends WanderingTrader implements RangedAtt
 
     @Override
     protected void registerGoals() {
-        super.registerGoals();
-
         this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(1, new SurvivorFleeGoal(this, 0.35F, 0.60F, 15.0F, 1.10, 1.30));
         this.goalSelector.addGoal(2, new SurvivorAvoidCreeperGoal(this, 10.0F, 1.10, 1.35));
@@ -123,17 +101,20 @@ public class FriendlySurvivorEntity extends WanderingTrader implements RangedAtt
         this.goalSelector.addGoal(4, new OpenDoorGoal(this, true));
         this.goalSelector.addGoal(4, new OpenFenceGoal(this, true));
         this.goalSelector.addGoal(5, new SurvivorEatFoodGoal(this, 0.45F, 20 * 6, 20 * 10, 10.0F));
-        this.goalSelector.addGoal(6, new SurvivorUseTacticalEffectGoal(this, tacticalEffects, 0.50F));
-        this.goalSelector.addGoal(7, new SurvivorWeaponSwitchGoal(this, 4.0));
-        this.goalSelector.addGoal(8, new SurvivorRaiseShieldGoal(this));
-        this.goalSelector.addGoal(9, new RangedCrossbowAttackGoal<>(this, 1.10, 16.0F));
-        this.goalSelector.addGoal(9, new RangedBowAttackGoal<>(this, 1.10, 20, 16.0F));
-        this.goalSelector.addGoal(10, new net.minecraft.world.entity.ai.goal.MeleeAttackGoal(this, 1.15, false));
-        this.goalSelector.addGoal(11, new RandomStrollGoal(this, 0.9));
-        this.goalSelector.addGoal(12, new LookAtPlayerGoal(this, Player.class, 10.0F));
-        this.goalSelector.addGoal(13, new RandomLookAroundGoal(this));
+        this.goalSelector.addGoal(6, new SurvivorUsePotionGoal(this, () -> this.tacticalInventory));
+        this.goalSelector.addGoal(8, new SurvivorWeaponSwitchGoal(this, 4.0));
+
+        this.goalSelector.addGoal(9, new SurvivorRangedCrossbowAttackGoal<>(this, 1.10, 16.0F));
+        this.goalSelector.addGoal(9, new SurvivorRangedBowAttackGoal<>(this, 1.10, 20, 16.0F));
+        this.goalSelector.addGoal(10, new MeleeAttackGoal(this, 1.15, false));
+
+        this.goalSelector.addGoal(11, new SurvivorRaiseShieldGoal(this));
+        this.goalSelector.addGoal(12, new RandomStrollGoal(this, 0.9));
+        this.goalSelector.addGoal(13, new LookAtPlayerGoal(this, Player.class, 10.0F));
+        this.goalSelector.addGoal(14, new RandomLookAroundGoal(this));
 
         this.targetSelector.addGoal(1, new HurtByTargetGoal(this));
+
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(
                 this,
                 Player.class,
@@ -146,15 +127,26 @@ public class FriendlySurvivorEntity extends WanderingTrader implements RangedAtt
                     return ReputationTiers.isHostileToPlayer(rep);
                 }
         ));
-        this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, HostileSurvivorEntity.class, true));
-        this.targetSelector.addGoal(4, new NearestAttackableTargetGoal<>(this, Monster.class, true));
+
+        this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, HostileSurvivorEntity.class, 5, false, false, null));
+
+        this.targetSelector.addGoal(4, new NearestAttackableTargetGoal<>(
+                this,
+                NeutralSurvivorEntity.class,
+                5,
+                false,
+                false,
+                living -> living instanceof NeutralSurvivorEntity n && n.isAngry()
+        ));
+
+        this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Monster.class, 5, false, false, null));
     }
 
     public int getLastCombatTick() {
         return lastCombatTick;
     }
 
-    private void markCombat() {
+    public void markCombat() {
         this.lastCombatTick = this.tickCount;
     }
 
@@ -166,7 +158,7 @@ public class FriendlySurvivorEntity extends WanderingTrader implements RangedAtt
     }
 
     @Override
-    public boolean doHurtTarget(net.minecraft.world.entity.Entity target) {
+    public boolean doHurtTarget(Entity target) {
         boolean res = super.doHurtTarget(target);
         if (res) markCombat();
         return res;
@@ -174,9 +166,8 @@ public class FriendlySurvivorEntity extends WanderingTrader implements RangedAtt
 
     @Override
     public void setTarget(@Nullable LivingEntity target) {
-        // avoid oscillation: when low HP, prioritize fleeing over picking new targets
         if (!this.level().isClientSide && target != null) {
-            if (com.flechazo.eos.entity.ai.goal.SurvivorAiUtil.isLowHp(this, 0.35F)) {
+            if (SurvivorAiUtil.isLowHp(this, 0.35F) && this.getTarget() != null && target != this.getTarget()) {
                 return;
             }
             markCombat();
@@ -186,7 +177,7 @@ public class FriendlySurvivorEntity extends WanderingTrader implements RangedAtt
 
     public Optional<ResourceLocation> getProfessionId() {
         String raw = this.entityData.get(PROFESSION_ID);
-        if (raw == null || raw.isBlank()) return Optional.empty();
+        if (raw.isBlank()) return Optional.empty();
         return Optional.ofNullable(ResourceLocation.tryParse(raw));
     }
 
@@ -196,7 +187,7 @@ public class FriendlySurvivorEntity extends WanderingTrader implements RangedAtt
 
     public Optional<UUID> getSkinUuid() {
         String raw = this.entityData.get(SKIN_UUID);
-        if (raw == null || raw.isBlank()) return Optional.empty();
+        if (raw.isBlank()) return Optional.empty();
         try {
             return Optional.of(UUID.fromString(raw));
         } catch (Exception ignored) {
@@ -324,30 +315,25 @@ public class FriendlySurvivorEntity extends WanderingTrader implements RangedAtt
             return InteractionResult.sidedSuccess(this.level().isClientSide);
         }
 
-        // Re-implement WanderingTrader's trade interaction to ensure offers are always refreshed
-        // before checking emptiness. Otherwise, one empty refresh would make it impossible to re-open.
         ItemStack itemstack = player.getItemInHand(hand);
         if (!itemstack.is(Items.VILLAGER_SPAWN_EGG) && this.isAlive() && !this.isTrading() && !this.isBaby()) {
             if (hand == InteractionHand.MAIN_HAND) {
-                player.awardStat(net.minecraft.stats.Stats.TALKED_TO_VILLAGER);
+                player.awardStat(Stats.TALKED_TO_VILLAGER);
             }
 
             if (!this.level().isClientSide) {
-                // Stop any "using item" state (shield/food) so trading doesn't get stuck.
                 this.getNavigation().stop();
                 this.setTarget(null);
                 if (this.isUsingItem()) {
                     this.stopUsingItem();
                 }
 
-                // Ensure we have up-to-date offers for this player before opening.
                 this.setTradingPlayer(player);
                 this.offers = new MerchantOffers();
                 this.offerReputationGains.clear();
                 this.updateTrades();
 
                 if (this.getOffers().isEmpty()) {
-                    // Don't leave the entity in "trading" state when we refuse.
                     this.setTradingPlayer(null);
                     return InteractionResult.CONSUME;
                 }
@@ -435,37 +421,25 @@ public class FriendlySurvivorEntity extends WanderingTrader implements RangedAtt
 
         ensureSkinAssigned(profession);
 
-        profession.initialEquipment().mainHand().flatMap(BuiltInRegistries.ITEM::getOptional).ifPresent(item -> this.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(item)));
-
         profession.initialEquipment().armorSet().ifPresent(armorSetId -> {
             ArmorSetDefinition def = EosDatapackIndex.armorSet(armorSetId).orElse(null);
             if (def == null || def.set() == null || def.set().isEmpty()) return;
 
             List<ArmorSetDefinition.ArmorSet> variants = new ArrayList<>(def.set().values());
             ArmorSetDefinition.ArmorSet chosen = variants.get(this.random.nextInt(variants.size()));
-            equipIfPresent(EquipmentSlot.HEAD, chosen.head());
-            equipIfPresent(EquipmentSlot.CHEST, chosen.chest());
-            equipIfPresent(EquipmentSlot.LEGS, chosen.legs());
-            equipIfPresent(EquipmentSlot.FEET, chosen.feet());
+            for (var entry : chosen.slots().entrySet()) {
+                equipIfPresent(entry.getKey(), Optional.of(entry.getValue()));
+            }
         });
 
-        tacticalEffects.clear();
-        for (ResourceLocation tactical : profession.initialEquipment().tacticalItems()) {
-            if (tactical == null) continue;
-
-            var itemOpt = BuiltInRegistries.ITEM.getOptional(tactical);
-            if (itemOpt.isPresent()) {
-                Item item = itemOpt.get();
-                if (item == Items.TOTEM_OF_UNDYING) {
-                    this.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(item));
-                } else {
-                    this.getInventory().addItem(new ItemStack(item));
+        for (ItemStack stack : profession.initialEquipment().tacticalItems()) {
+            if (stack == null || stack.isEmpty()) continue;
+            ItemStack copy = stack.copy();
+            for (int i = 0; i < tacticalInventory.getSlots(); i++) {
+                if (tacticalInventory.getStackInSlot(i).isEmpty()) {
+                    tacticalInventory.setStackInSlot(i, copy);
+                    break;
                 }
-                continue;
-            }
-
-            if (BuiltInRegistries.MOB_EFFECT.getOptional(tactical).isPresent()) {
-                tacticalEffects.add(tactical);
             }
         }
     }
@@ -475,7 +449,6 @@ public class FriendlySurvivorEntity extends WanderingTrader implements RangedAtt
         if (getSkinUuid().isPresent()) return;
 
         if (profession != null && profession.skin() != null && profession.skin().isPresent()) {
-            // profession provides a fixed texture, no Mojang skin needed
             return;
         }
 

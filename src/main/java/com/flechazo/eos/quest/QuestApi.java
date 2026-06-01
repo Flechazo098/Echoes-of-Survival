@@ -3,6 +3,7 @@ package com.flechazo.eos.quest;
 import com.flechazo.eos.data.EosDatapackIndex;
 import com.flechazo.eos.data.common.ItemStackDef;
 import com.flechazo.eos.data.quest.QuestDefinition;
+import com.flechazo.eos.data.reputation.ReputationTiersDefinition;
 import com.flechazo.eos.reputation.EosAttachments;
 import com.flechazo.eos.reputation.ReputationApi;
 import com.flechazo.eos.util.EosAliases;
@@ -37,7 +38,7 @@ public final class QuestApi {
             int required = def.requireReputation().get().map(
                     v -> v,
                     tierName -> EosDatapackIndex.reputationTierByName(tierName)
-                            .map(t -> t.min())
+                            .map(ReputationTiersDefinition.Tier::min)
                             .orElse(Integer.MAX_VALUE)
             );
             if (rep < required) return false;
@@ -87,7 +88,6 @@ public final class QuestApi {
         if (player == null || killed == null) return;
 
         ResourceLocation killedType = BuiltInRegistries.ENTITY_TYPE.getKey(killed.getType());
-        if (killedType == null) return;
 
         PlayerQuestState state = getState(player);
         if (state.active().isEmpty()) return;

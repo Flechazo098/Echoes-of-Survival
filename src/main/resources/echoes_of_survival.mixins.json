@@ -4,6 +4,7 @@
   "package": "com.flechazo.eos.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "SurvivorTotemMixin"
   ],
   "client": [
   ],

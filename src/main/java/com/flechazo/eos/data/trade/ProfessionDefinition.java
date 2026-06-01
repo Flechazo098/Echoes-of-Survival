@@ -5,6 +5,7 @@ import cc.sighs.oelib.data.api.DataValidator;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.List;
 import java.util.Optional;
@@ -17,25 +18,27 @@ import java.util.Optional;
 public record ProfessionDefinition(
         ResourceLocation id,
         Optional<ResourceLocation> skin,
+        Optional<ResourceLocation> hostileSkin,
+        Optional<ResourceLocation> neutralSkin,
         InitialEquipment initialEquipment,
         Logic logic
 ) {
     public static final Codec<ProfessionDefinition> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             ResourceLocation.CODEC.fieldOf("id").forGetter(ProfessionDefinition::id),
             ResourceLocation.CODEC.optionalFieldOf("skin").forGetter(ProfessionDefinition::skin),
+            ResourceLocation.CODEC.optionalFieldOf("hostile_skin").forGetter(ProfessionDefinition::hostileSkin),
+            ResourceLocation.CODEC.optionalFieldOf("neutral_skin").forGetter(ProfessionDefinition::neutralSkin),
             InitialEquipment.CODEC.fieldOf("initial_equipment").forGetter(ProfessionDefinition::initialEquipment),
             Logic.CODEC.fieldOf("logic").forGetter(ProfessionDefinition::logic)
     ).apply(instance, ProfessionDefinition::new));
 
     public record InitialEquipment(
-            Optional<ResourceLocation> mainHand,
             Optional<ResourceLocation> armorSet,
-            List<ResourceLocation> tacticalItems
+            List<ItemStack> tacticalItems
     ) {
         public static final Codec<InitialEquipment> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-                ResourceLocation.CODEC.optionalFieldOf("main_hand").forGetter(InitialEquipment::mainHand),
                 ResourceLocation.CODEC.optionalFieldOf("armor_set").forGetter(InitialEquipment::armorSet),
-                ResourceLocation.CODEC.listOf().optionalFieldOf("tactical_items", List.of()).forGetter(InitialEquipment::tacticalItems)
+                ItemStack.CODEC.listOf().optionalFieldOf("tactical_items", List.of()).forGetter(InitialEquipment::tacticalItems)
         ).apply(instance, InitialEquipment::new));
     }
 
@@ -62,4 +65,3 @@ public record ProfessionDefinition(
         }
     }
 }
-

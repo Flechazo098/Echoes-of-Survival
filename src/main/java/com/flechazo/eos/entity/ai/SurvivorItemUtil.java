@@ -1,11 +1,6 @@
 package com.flechazo.eos.entity.ai;
 
-import net.minecraft.world.item.AxeItem;
-import net.minecraft.world.item.BowItem;
-import net.minecraft.world.item.CrossbowItem;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.SwordItem;
-import net.minecraft.world.item.TridentItem;
+import net.minecraft.world.item.*;
 
 public final class SurvivorItemUtil {
     private SurvivorItemUtil() {

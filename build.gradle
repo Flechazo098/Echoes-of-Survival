@@ -103,13 +103,23 @@ repositories {
         name = "Jared's maven"
         url = "https://maven.blamejared.com/"
     }
+    maven {
+        // Add curse maven to repositories
+        name = "Curse Maven"
+        url = "https://www.cursemaven.com"
+        content {
+            includeGroup "curse.maven"
+        }
+    }
 }
 
 dependencies {
     implementation "cc.sighs.oelib:OELib-neoforge-1.21.1:0.2.3"
-
-    compileOnly "mezz.jei:jei-$rootProject.minecraft_version-neoforge-api:$rootProject.jei_version"
-    runtimeOnly ("mezz.jei:jei-$rootProject.minecraft_version-neoforge:$rootProject.jei_version") { transitive = false }
+    implementation "curse.maven:sodium-394468:8143565"
+    implementation "curse.maven:nbt-938890:6307058"
+//    compileOnly "mezz.jei:jei-$rootProject.minecraft_version-neoforge-api:$rootProject.jei_version"
+//    runtimeOnly ("mezz.jei:jei-$rootProject.minecraft_version-neoforge:$rootProject.jei_version") { transitive = false }
+//    implementation 'com.sighs:ApricityUI-neoforge-1.21.1:1.1.2'
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.

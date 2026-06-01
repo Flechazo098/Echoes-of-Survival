@@ -2,6 +2,7 @@ package com.flechazo.eos.client.render;
 
 import com.flechazo.eos.client.skin.MojangSkinCache;
 import com.flechazo.eos.data.EosDatapackIndex;
+import com.flechazo.eos.data.trade.ProfessionDefinition;
 import com.flechazo.eos.entity.FriendlySurvivorEntity;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelLayers;
@@ -28,7 +29,7 @@ public class FriendlySurvivorRenderer extends HumanoidMobRenderer<FriendlySurviv
     public ResourceLocation getTextureLocation(FriendlySurvivorEntity entity) {
         ResourceLocation forced = entity.getProfessionId()
                 .flatMap(EosDatapackIndex::profession)
-                .flatMap(def -> def.skin())
+                .flatMap(ProfessionDefinition::skin)
                 .orElse(null);
         if (forced != null) {
             return forced;

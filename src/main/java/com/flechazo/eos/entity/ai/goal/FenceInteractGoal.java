@@ -6,7 +6,6 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
 import net.minecraft.world.entity.ai.util.GoalUtils;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.FenceGateBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -62,7 +61,7 @@ public abstract class FenceInteractGoal extends Goal {
     }
 
     private void playSound(Level level, BlockPos pos, boolean open) {
-        level.levelEvent((Player) null, open ? 1006 : 1012, pos, 0);
+        level.levelEvent(null, open ? 1006 : 1012, pos, 0);
     }
 
     @Override

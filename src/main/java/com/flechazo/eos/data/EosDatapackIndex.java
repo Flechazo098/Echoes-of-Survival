@@ -4,6 +4,7 @@ import cc.sighs.oelib.data.DataManager;
 import cc.sighs.oelib.neoforge.event.DataReloadEvent;
 import com.flechazo.eos.EchoesofSurvival;
 import com.flechazo.eos.data.armor.ArmorSetDefinition;
+import com.flechazo.eos.data.common.HealingPotionList;
 import com.flechazo.eos.data.quest.QuestDefinition;
 import com.flechazo.eos.data.quest.QuestPoolDefinition;
 import com.flechazo.eos.data.reputation.ReputationEventsDefinition;
@@ -11,12 +12,14 @@ import com.flechazo.eos.data.reputation.ReputationTiersDefinition;
 import com.flechazo.eos.data.skin.SkinLibraryDefinition;
 import com.flechazo.eos.data.trade.ProfessionDefinition;
 import com.flechazo.eos.data.trade.TradePoolDefinition;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 @EventBusSubscriber(modid = EchoesofSurvival.MODID)
 public final class EosDatapackIndex {
@@ -33,6 +36,7 @@ public final class EosDatapackIndex {
     private static volatile List<Map.Entry<String, ReputationTiersDefinition.Tier>> reputationTiers = List.of();
     private static volatile Map<String, ReputationEventsDefinition.ReputationEvent> reputationEventById = Map.of();
     private static volatile List<UUID> skinLibraryUuids = List.of();
+    private static volatile List<String> healingPotionPatterns = List.of();
 
     @SubscribeEvent
     public static void onDataReload(DataReloadEvent event) {
@@ -46,6 +50,7 @@ public final class EosDatapackIndex {
         if (type == ReputationTiersDefinition.class) rebuildReputationTiers();
         if (type == ReputationEventsDefinition.class) rebuildReputationEvents();
         if (type == SkinLibraryDefinition.class) rebuildSkinLibrary();
+        if (type == HealingPotionList.class) rebuildHealingPotions();
     }
 
     private static void rebuildProfessions() {
@@ -132,8 +137,50 @@ public final class EosDatapackIndex {
         skinLibraryUuids = List.copyOf(list);
     }
 
+    private static void rebuildHealingPotions() {
+        List<String> list = new ArrayList<>();
+        for (HealingPotionList def : DataManager.getDataList(HealingPotionList.class)) {
+            if (def != null && def.values() != null) list.addAll(def.values());
+        }
+        healingPotionPatterns = List.copyOf(list);
+    }
+
     public static Optional<ProfessionDefinition> profession(ResourceLocation id) {
         return Optional.ofNullable(professionsById.get(id));
+    }
+
+    public static Optional<ProfessionDefinition> randomProfession() {
+        if (professionsById.isEmpty()) return Optional.empty();
+        int idx = (int) (Math.random() * professionsById.size());
+        var list = professionsById.values().stream().toList();
+        return idx >= 0 && idx < list.size() ? Optional.of(list.get(idx)) : Optional.empty();
+    }
+
+    public static boolean matches(ItemStack stack) {
+        if (stack == null || stack.isEmpty() || healingPotionPatterns.isEmpty()) return false;
+
+        String type;
+        if (stack.is(Items.POTION)) type = "potion";
+        else if (stack.is(Items.SPLASH_POTION)) type = "splash";
+        else if (stack.is(Items.LINGERING_POTION)) type = "lingering";
+        else return false;
+
+        var contents = stack.get(DataComponents.POTION_CONTENTS);
+        if (contents == null) return false;
+
+        if (contents.potion().isPresent()) {
+            String path = contents.potion().get().unwrapKey()
+                    .map(k -> k.location().getPath()).orElse("");
+            if (!path.isEmpty() && healingPotionPatterns.contains(type + ":" + path)) return true;
+        }
+
+        for (var effect : contents.customEffects()) {
+            String path = effect.getEffect().unwrapKey()
+                    .map(k -> k.location().getPath()).orElse("");
+            if (!path.isEmpty() && healingPotionPatterns.contains(type + ":" + path)) return true;
+        }
+
+        return false;
     }
 
     public static Optional<QuestDefinition> quest(ResourceLocation id) {

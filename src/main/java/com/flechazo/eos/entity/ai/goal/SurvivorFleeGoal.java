@@ -12,14 +12,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.EnumSet;
 
-/**
- * Low-HP flee behavior (inspired by HostileHumans RunFromTarget).
- * <p>
- * This goal intentionally stays lightweight: it avoids introducing complex
- * inventory logic or combat-state machines, but still provides the "smart"
- * behavior of backing off when low.
- * </p>
- */
 public class SurvivorFleeGoal extends Goal {
     private final PathfinderMob mob;
     private final PathNavigation navigation;
@@ -67,7 +59,6 @@ public class SurvivorFleeGoal extends Goal {
         if (candidate instanceof Player p && (p.isCreative() || p.isSpectator())) return false;
 
         this.threat = candidate;
-        this.mob.setTarget(null);
 
         return generatePathAway();
     }
@@ -81,7 +72,6 @@ public class SurvivorFleeGoal extends Goal {
         }
         if (away == null) return false;
 
-        // ensure it's actually away
         if (mob.distanceToSqr(away.x, away.y, away.z) < threat.distanceToSqr(mob)) return false;
 
         this.path = this.navigation.createPath(away.x, away.y, away.z, 0);
@@ -129,7 +119,6 @@ public class SurvivorFleeGoal extends Goal {
     public void tick() {
         if (this.threat == null) return;
 
-        this.mob.setTarget(null);
         double distSqr = this.mob.distanceToSqr(this.threat);
         this.mob.getNavigation().setSpeedModifier(distSqr < 7.0 * 7.0 ? this.sprintSpeed : this.walkSpeed);
     }

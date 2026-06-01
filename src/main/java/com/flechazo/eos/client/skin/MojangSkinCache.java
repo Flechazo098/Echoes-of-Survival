@@ -27,14 +27,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * Mojang skin fetch + disk cache.
- * <p>
- * This class never blocks the render thread: it returns a fallback texture
- * while the skin is downloading/loading, then swaps in the dynamic texture
- * on later frames.
- * </p>
- */
 public final class MojangSkinCache {
     private MojangSkinCache() {
     }
@@ -66,7 +58,6 @@ public final class MojangSkinCache {
     private static void request(UUID uuid) {
         if (uuid == null) return;
         if (!IN_FLIGHT.add(uuid)) return;
-        // Do not touch disk/network on the render thread: hop to the executor immediately.
         CompletableFuture.runAsync(() -> {
                     Path cacheFile = cacheFile(uuid);
                     if (Files.isRegularFile(cacheFile)) {
@@ -251,7 +242,7 @@ public final class MojangSkinCache {
 
     private static Path cacheFile(UUID uuid) {
         Minecraft mc = Minecraft.getInstance();
-        Path gameDir = mc != null && mc.gameDirectory != null ? mc.gameDirectory.toPath() : Path.of(".");
+        Path gameDir = mc.gameDirectory.toPath();
         return gameDir
                 .resolve("config")
                 .resolve(EchoesofSurvival.MODID)

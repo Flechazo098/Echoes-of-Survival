@@ -11,7 +11,7 @@ import java.util.Map;
 public record PlayerQuestState(Map<ResourceLocation, QuestProgress> active) {
     public static final Codec<PlayerQuestState> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             Codec.unboundedMap(ResourceLocation.CODEC, QuestProgress.CODEC)
-                    .optionalFieldOf("active", Map.<ResourceLocation, QuestProgress>of())
+                    .optionalFieldOf("active", Map.of())
                     .forGetter(PlayerQuestState::active)
     ).apply(instance, PlayerQuestState::new));
 

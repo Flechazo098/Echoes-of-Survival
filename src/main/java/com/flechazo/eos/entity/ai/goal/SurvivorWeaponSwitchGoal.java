@@ -1,19 +1,13 @@
 package com.flechazo.eos.entity.ai.goal;
 
 import com.flechazo.eos.entity.ai.SurvivorItemUtil;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.EnumSet;
 
-/**
- * Minimal "smart" weapon switching.
- * <p>
- * If the survivor has a ranged weapon in main hand and a melee weapon in offhand (or vice versa),
- * it swaps hands based on distance to target.
- * </p>
- */
 public class SurvivorWeaponSwitchGoal extends Goal {
     private final Mob mob;
     private final double meleeDistanceSqr;
@@ -24,7 +18,7 @@ public class SurvivorWeaponSwitchGoal extends Goal {
     public SurvivorWeaponSwitchGoal(Mob mob, double preferMeleeDistance) {
         this.mob = mob;
         double melee = Math.max(1.0, preferMeleeDistance);
-        double ranged = melee + 2.0; // hysteresis to prevent hand-thrashing
+        double ranged = melee + 2.0;
         this.meleeDistanceSqr = melee * melee;
         this.rangedDistanceSqr = ranged * ranged;
         this.setFlags(EnumSet.noneOf(Flag.class));
@@ -46,7 +40,6 @@ public class SurvivorWeaponSwitchGoal extends Goal {
             cooldownTicks--;
             return;
         }
-        // Don't swap while using an item (crossbow charging / blocking / eating).
         if (mob.isUsingItem()) return;
 
         var target = mob.getTarget();
@@ -82,8 +75,8 @@ public class SurvivorWeaponSwitchGoal extends Goal {
     private void swapHands() {
         ItemStack main = mob.getMainHandItem();
         ItemStack off = mob.getOffhandItem();
-        mob.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, off);
-        mob.setItemInHand(net.minecraft.world.InteractionHand.OFF_HAND, main);
-        cooldownTicks = 60; // similar feel to HostileHumans switching cooldown
+        mob.setItemInHand(InteractionHand.MAIN_HAND, off);
+        mob.setItemInHand(InteractionHand.OFF_HAND, main);
+        cooldownTicks = 60;
     }
 }

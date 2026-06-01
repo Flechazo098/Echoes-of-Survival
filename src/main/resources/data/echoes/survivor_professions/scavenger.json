@@ -1,10 +1,16 @@
 {
   "id": "echoes:scavenger",
   "initial_equipment": {
-    "main_hand": "minecraft:stone_sword",
     "armor_set": "echoes:scavenger_tier_1",
     "tactical_items": [
-      "minecraft:regeneration"
+      {
+        "id": "minecraft:splash_potion",
+        "components": {
+          "minecraft:potion_contents": {
+            "potion": "minecraft:regeneration"
+          }
+        }
+      }
     ]
   },
   "logic": {

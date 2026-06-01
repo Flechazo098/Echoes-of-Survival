@@ -3,6 +3,7 @@ package com.flechazo.eos.data;
 import cc.sighs.oelib.data.DataRegistry;
 import com.flechazo.eos.config.EosConfigs;
 import com.flechazo.eos.data.armor.ArmorSetDefinition;
+import com.flechazo.eos.data.common.HealingPotionList;
 import com.flechazo.eos.data.quest.QuestDefinition;
 import com.flechazo.eos.data.quest.QuestPoolDefinition;
 import com.flechazo.eos.data.reputation.ReputationEventsDefinition;
@@ -29,6 +30,7 @@ public final class EosDataTypes {
         registerType(ReputationEventsDefinition.class, ReputationEventsDefinition.CODEC, namespaces);
         registerType(ArmorSetDefinition.class, ArmorSetDefinition.CODEC, namespaces);
         registerType(SkinLibraryDefinition.class, SkinLibraryDefinition.CODEC, namespaces);
+        registerType(HealingPotionList.class, HealingPotionList.CODEC, namespaces);
     }
 
     private static <T> void registerType(Class<T> dataClass, Codec<T> codec, List<String> namespaces) {

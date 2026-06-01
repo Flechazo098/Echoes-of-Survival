@@ -35,6 +35,14 @@ public final class EosEntityTypes {
                     .build("hostile_survivor")
     );
 
+    public static final Supplier<EntityType<NeutralSurvivorEntity>> NEUTRAL_SURVIVOR = ENTITIES.register(
+            "neutral_survivor",
+            () -> EntityType.Builder.of(NeutralSurvivorEntity::new, MobCategory.CREATURE)
+                    .sized(0.6F, 1.95F)
+                    .clientTrackingRange(8)
+                    .build("neutral_survivor")
+    );
+
     public static void register(IEventBus bus) {
         ENTITIES.register(bus);
     }
@@ -45,6 +53,7 @@ public final class EosEntityTypes {
         public static void onAttributes(EntityAttributeCreationEvent event) {
             event.put(FRIENDLY_SURVIVOR.get(), FriendlySurvivorEntity.createAttributes().build());
             event.put(HOSTILE_SURVIVOR.get(), HostileSurvivorEntity.createAttributes().build());
+            event.put(NEUTRAL_SURVIVOR.get(), NeutralSurvivorEntity.createAttributes().build());
         }
     }
 }

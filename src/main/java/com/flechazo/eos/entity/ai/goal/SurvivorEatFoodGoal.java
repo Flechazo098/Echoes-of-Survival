@@ -6,13 +6,6 @@ import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.UseAnim;
 
-/**
- * Simple self-heal by "eating" an edible/drinkable item from inventory.
- * <p>
- * We intentionally keep this logic minimal for the first playable version:
- * the survivor will play the using animation and then heal a fixed amount.
- * </p>
- */
 public class SurvivorEatFoodGoal extends Goal {
     private final FriendlySurvivorEntity mob;
     private final float hpPercent;
@@ -106,7 +99,6 @@ public class SurvivorEatFoodGoal extends Goal {
         }
 
         if (inventorySlot >= 0 && mob.getOffhandItem().isEmpty() && !storedOffhand.isEmpty()) {
-            // restore any offhand we displaced (should be empty in our current logic)
             mob.setItemInHand(InteractionHand.OFF_HAND, storedOffhand);
         }
 

@@ -3,5 +3,8 @@
   "quest.echoes.medic_delivery.title": "Medical Supplies Needed",
   "quest.echoes.medic_delivery.desc": "We need empty glass bottles for potions.",
   "quest.echoes.clear_raiders.title": "Clear the Raiders",
-  "quest.echoes.clear_raiders.desc": "A group of raiders is harassing us nearby."
+  "quest.echoes.clear_raiders.desc": "A group of raiders is harassing us nearby.",
+  "entity.echoes_of_survival.neutral_survivor.warn": "Back off, stranger!",
+  "entity.echoes_of_survival.neutral_survivor.hostile": "You asked for it!",
+  "entity.echoes_of_survival.neutral_survivor.beg": "Please... got any food..."
 }

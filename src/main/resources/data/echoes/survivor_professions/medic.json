@@ -1,11 +1,17 @@
 {
   "id": "echoes:medic",
   "initial_equipment": {
-    "main_hand": "minecraft:iron_sword",
     "armor_set": "echoes:scavenger_tier_1",
     "tactical_items": [
-      "minecraft:totem_of_undying",
-      "minecraft:regeneration"
+      {"id": "minecraft:totem_of_undying"},
+      {
+        "id": "minecraft:splash_potion",
+        "components": {
+          "minecraft:potion_contents": {
+            "potion": "minecraft:regeneration"
+          }
+        }
+      }
     ]
   },
   "logic": {

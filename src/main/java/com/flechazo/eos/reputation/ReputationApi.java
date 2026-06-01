@@ -2,7 +2,6 @@ package com.flechazo.eos.reputation;
 
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
-import net.neoforged.neoforge.attachment.AttachmentType;
 
 public final class ReputationApi {
     private ReputationApi() {

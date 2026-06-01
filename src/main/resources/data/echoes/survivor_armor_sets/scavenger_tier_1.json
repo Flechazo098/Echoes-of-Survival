@@ -1,12 +1,16 @@
 {
   "set": {
     "1": {
+      "mainhand": "minecraft:iron_sword",
+      "offhand": "minecraft:shield",
       "head": "minecraft:leather_helmet",
       "chest": "minecraft:leather_chestplate",
       "legs": "minecraft:leather_leggings",
       "feet": "minecraft:leather_boots"
     },
     "2": {
+      "mainhand": "minecraft:stone_sword",
+      "offhand": "minecraft:shield",
       "head": "minecraft:chainmail_helmet",
       "chest": "minecraft:chainmail_chestplate",
       "legs": "minecraft:chainmail_leggings",
@@ -14,4 +18,3 @@
     }
   }
 }
-

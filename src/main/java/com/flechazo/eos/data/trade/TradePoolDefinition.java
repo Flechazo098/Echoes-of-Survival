@@ -48,10 +48,12 @@ public record TradePoolDefinition(
         public ValidationResult validate(TradePoolDefinition data, ResourceLocation source) {
             if (data == null) return ValidationResult.failure("trade pool is null");
             if (data.profession == null) return ValidationResult.failure("profession is required");
-            if (data.trades == null || data.trades.isEmpty()) return ValidationResult.failure("trades must not be empty");
+            if (data.trades == null || data.trades.isEmpty())
+                return ValidationResult.failure("trades must not be empty");
             for (Trade trade : data.trades) {
                 if (trade == null) return ValidationResult.failure("trade entry is null");
-                if (trade.buy == null || trade.sell == null) return ValidationResult.failure("trade buy/sell is required");
+                if (trade.buy == null || trade.sell == null)
+                    return ValidationResult.failure("trade buy/sell is required");
                 if (trade.maxUses <= 0) return ValidationResult.failure("trade max_uses must be > 0");
             }
             return ValidationResult.success();

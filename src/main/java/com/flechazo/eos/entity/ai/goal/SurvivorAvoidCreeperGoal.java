@@ -1,10 +1,10 @@
 package com.flechazo.eos.entity.ai.goal;
 
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.ai.util.DefaultRandomPos;
 import net.minecraft.world.entity.monster.Creeper;
-import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
@@ -13,8 +13,6 @@ import java.util.EnumSet;
 import java.util.List;
 
 /**
- * Lightweight "avoid creeper" port inspired by HostileHumans.
- * <p>
  * If the creeper is priming (swell dir &gt; 0 / ignited) we always avoid it.
  * Otherwise, we avoid it unless this survivor has the "fight creepers" personality.
  * </p>
@@ -60,7 +58,6 @@ public class SurvivorAvoidCreeperGoal extends Goal {
         Vec3 away = DefaultRandomPos.getPosAway(this.mob, 16, 7, this.toAvoid.position());
         if (away == null) return false;
 
-        // ensure it's actually away
         if (this.toAvoid.distanceToSqr(away.x, away.y, away.z) < this.toAvoid.distanceToSqr(this.mob)) {
             return false;
         }
@@ -85,6 +82,7 @@ public class SurvivorAvoidCreeperGoal extends Goal {
     public void stop() {
         this.toAvoid = null;
         this.path = null;
+        this.mob.getNavigation().setSpeedModifier(1.0);
     }
 
     @Override

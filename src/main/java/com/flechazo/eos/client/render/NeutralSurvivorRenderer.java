@@ -1,7 +1,7 @@
 package com.flechazo.eos.client.render;
 
 import com.flechazo.eos.client.skin.MojangSkinCache;
-import com.flechazo.eos.entity.HostileSurvivorEntity;
+import com.flechazo.eos.entity.NeutralSurvivorEntity;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelLayers;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
@@ -9,11 +9,11 @@ import net.minecraft.client.renderer.entity.HumanoidMobRenderer;
 import net.minecraft.client.renderer.entity.layers.HumanoidArmorLayer;
 import net.minecraft.resources.ResourceLocation;
 
-public class HostileSurvivorRenderer extends HumanoidMobRenderer<HostileSurvivorEntity, HumanoidModel<HostileSurvivorEntity>> {
+public class NeutralSurvivorRenderer extends HumanoidMobRenderer<NeutralSurvivorEntity, HumanoidModel<NeutralSurvivorEntity>> {
     private static final ResourceLocation TEXTURE =
-            ResourceLocation.fromNamespaceAndPath("echoes", "textures/entity/survivor/hostile_survivor.png");
+            ResourceLocation.fromNamespaceAndPath("echoes", "textures/entity/survivor/neutral_survivor.png");
 
-    public HostileSurvivorRenderer(EntityRendererProvider.Context context) {
+    public NeutralSurvivorRenderer(EntityRendererProvider.Context context) {
         super(context, new HumanoidModel<>(context.bakeLayer(ModelLayers.PLAYER)), 0.5F);
         this.addLayer(new HumanoidArmorLayer<>(
                 this,
@@ -24,7 +24,7 @@ public class HostileSurvivorRenderer extends HumanoidMobRenderer<HostileSurvivor
     }
 
     @Override
-    public ResourceLocation getTextureLocation(HostileSurvivorEntity entity) {
+    public ResourceLocation getTextureLocation(NeutralSurvivorEntity entity) {
         ResourceLocation mojang = entity.getSkinUuid()
                 .flatMap(MojangSkinCache::getOrRequest)
                 .orElse(null);

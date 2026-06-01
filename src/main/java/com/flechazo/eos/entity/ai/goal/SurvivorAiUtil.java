@@ -13,7 +13,7 @@ public final class SurvivorAiUtil {
     public static boolean hasTotemInOffhand(LivingEntity entity) {
         if (entity == null) return false;
         ItemStack offhand = entity.getOffhandItem();
-        return offhand != null && offhand.is(Items.TOTEM_OF_UNDYING);
+        return offhand.is(Items.TOTEM_OF_UNDYING);
     }
 
     public static boolean isLowHp(LivingEntity entity, float hpPercent) {
@@ -23,14 +23,9 @@ public final class SurvivorAiUtil {
         return entity.getHealth() < entity.getMaxHealth() * hpPercent;
     }
 
-    /**
-     * Deterministic per-entity "personality" choice: some survivors will
-     * choose to fight creepers instead of running away.
-     */
     public static boolean shouldFightCreeper(LivingEntity entity) {
         if (entity == null) return false;
         UUID uuid = entity.getUUID();
-        if (uuid == null) return false;
         return Math.floorMod(uuid.hashCode(), 100) < 20;
     }
 }

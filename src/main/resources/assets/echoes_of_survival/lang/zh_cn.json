@@ -3,5 +3,8 @@
   "quest.echoes.medic_delivery.title": "急需医疗物资",
   "quest.echoes.medic_delivery.desc": "我们需要空玻璃瓶来制作药水。",
   "quest.echoes.clear_raiders.title": "肃清袭击者",
-  "quest.echoes.clear_raiders.desc": "附近有一群袭击者正在骚扰我们。"
+  "quest.echoes.clear_raiders.desc": "附近有一群袭击者正在骚扰我们。",
+  "entity.echoes_of_survival.neutral_survivor.warn": "后退，陌生人！",
+  "entity.echoes_of_survival.neutral_survivor.hostile": "你自找的！",
+  "entity.echoes_of_survival.neutral_survivor.beg": "请...给我点吃的..."
 }

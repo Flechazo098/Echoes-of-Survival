@@ -5,10 +5,9 @@ import cc.sighs.oelib.data.api.DataValidator;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.EquipmentSlot;
 
-import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 
 @DataDriven(
         folder = "survivor_armor_sets",
@@ -22,18 +21,12 @@ public record ArmorSetDefinition(Map<String, ArmorSet> set) {
                     .forGetter(ArmorSetDefinition::set)
     ).apply(instance, ArmorSetDefinition::new));
 
-    public record ArmorSet(
-            Optional<ResourceLocation> head,
-            Optional<ResourceLocation> chest,
-            Optional<ResourceLocation> legs,
-            Optional<ResourceLocation> feet
-    ) {
-        public static final Codec<ArmorSet> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-                ResourceLocation.CODEC.optionalFieldOf("head").forGetter(ArmorSet::head),
-                ResourceLocation.CODEC.optionalFieldOf("chest").forGetter(ArmorSet::chest),
-                ResourceLocation.CODEC.optionalFieldOf("legs").forGetter(ArmorSet::legs),
-                ResourceLocation.CODEC.optionalFieldOf("feet").forGetter(ArmorSet::feet)
-        ).apply(instance, ArmorSet::new));
+
+    public record ArmorSet(Map<EquipmentSlot, ResourceLocation> slots) {
+        public static final Codec<ArmorSet> CODEC = Codec.unboundedMap(
+                EquipmentSlot.CODEC,
+                ResourceLocation.CODEC
+        ).xmap(ArmorSet::new, ArmorSet::slots);
     }
 
     public static final class Validator implements DataValidator<ArmorSetDefinition> {

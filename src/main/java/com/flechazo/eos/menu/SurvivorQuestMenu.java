@@ -5,15 +5,16 @@ import com.flechazo.eos.data.trade.ProfessionDefinition;
 import com.flechazo.eos.entity.FriendlySurvivorEntity;
 import com.flechazo.eos.quest.QuestApi;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
-import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -100,15 +101,14 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
         List<ResourceLocation> quests = EosDatapackIndex.questIdsFromPools(profession.logic().questPools());
 
         player.openMenu(
-                new net.minecraft.world.MenuProvider() {
+                new MenuProvider() {
                     @Override
-                    public net.minecraft.network.chat.Component getDisplayName() {
-                        return net.minecraft.network.chat.Component.translatable("gui.echoes_of_survival.survivor.quest");
+                    public Component getDisplayName() {
+                        return Component.translatable("gui.echoes_of_survival.survivor.quest");
                     }
 
-                    @Nullable
                     @Override
-                    public AbstractContainerMenu createMenu(int containerId, Inventory inv, Player p) {
+                    public @NotNull AbstractContainerMenu createMenu(int containerId, Inventory inv, Player p) {
                         return new SurvivorQuestMenu(containerId, inv, survivor, quests);
                     }
                 },

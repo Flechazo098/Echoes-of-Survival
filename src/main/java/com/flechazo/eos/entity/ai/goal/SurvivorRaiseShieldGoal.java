@@ -4,14 +4,12 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.goal.Goal;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.entity.monster.RangedAttackMob;
 import net.minecraft.world.item.BowItem;
 import net.minecraft.world.item.CrossbowItem;
+import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.common.ItemAbilities;
 
-/**
- * Smart-ish shield behavior: blocks when close to target or when target is ranged.
- */
 public class SurvivorRaiseShieldGoal extends Goal {
     private final Mob mob;
     private int cooldownTicks = 0;
@@ -28,7 +26,6 @@ public class SurvivorRaiseShieldGoal extends Goal {
         LivingEntity target = mob.getTarget();
         if (target == null || !target.isAlive()) return false;
 
-        // Don't block while charging bow/crossbow (it breaks ranged combat flow).
         if (mob.isUsingItem()) {
             ItemStack using = mob.getUseItem();
             if (!using.isEmpty() && (using.getItem() instanceof BowItem || using.getItem() instanceof CrossbowItem)) {
@@ -43,7 +40,7 @@ public class SurvivorRaiseShieldGoal extends Goal {
 
         double dist = mob.distanceTo(target);
         boolean close = dist <= 3.5D;
-        boolean targetRanged = target instanceof net.minecraft.world.entity.monster.RangedAttackMob;
+        boolean targetRanged = target instanceof RangedAttackMob;
         // Only keep the "ranged block" behavior when the threat is within a sensible range.
         return close || (targetRanged && dist <= 12.0D);
     }

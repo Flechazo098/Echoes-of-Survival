@@ -89,8 +89,10 @@ public record QuestDefinition(
                 if (obj.count() <= 0) {
                     return ValidationResult.failure("objective 'count' must be > 0");
                 }
-                if (submit && obj.item().isEmpty()) return ValidationResult.failure("submit_items objective requires 'item'");
-                if (kill && obj.entity().isEmpty()) return ValidationResult.failure("kill_entities objective requires 'entity'");
+                if (submit && obj.item().isEmpty())
+                    return ValidationResult.failure("submit_items objective requires 'item'");
+                if (kill && obj.entity().isEmpty())
+                    return ValidationResult.failure("kill_entities objective requires 'entity'");
             }
 
             return ValidationResult.success();

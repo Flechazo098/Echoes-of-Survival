@@ -9,13 +9,6 @@ import net.minecraft.world.level.pathfinder.Path;
 
 import java.util.EnumSet;
 
-/**
- * Small ladder/vine climb assist, inspired by HostileHumans.
- * <p>
- * Vanilla path navigation can sometimes "stall" on climbables; this goal adds
- * a bit of Y motion in the direction of the next path node while on climbables.
- * </p>
- */
 public class SurvivorLadderClimbGoal extends Goal {
     private final Mob mob;
     private Path path;

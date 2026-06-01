@@ -3,6 +3,7 @@ package com.flechazo.eos.client;
 import com.flechazo.eos.EchoesofSurvival;
 import com.flechazo.eos.client.render.FriendlySurvivorRenderer;
 import com.flechazo.eos.client.render.HostileSurvivorRenderer;
+import com.flechazo.eos.client.render.NeutralSurvivorRenderer;
 import com.flechazo.eos.client.screen.SurvivorQuestScreen;
 import com.flechazo.eos.entity.EosEntityTypes;
 import com.flechazo.eos.menu.EosMenus;
@@ -26,5 +27,6 @@ public final class EosClientEvents {
     public static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
         event.registerEntityRenderer(EosEntityTypes.FRIENDLY_SURVIVOR.get(), FriendlySurvivorRenderer::new);
         event.registerEntityRenderer(EosEntityTypes.HOSTILE_SURVIVOR.get(), HostileSurvivorRenderer::new);
+        event.registerEntityRenderer(EosEntityTypes.NEUTRAL_SURVIVOR.get(), NeutralSurvivorRenderer::new);
     }
 }

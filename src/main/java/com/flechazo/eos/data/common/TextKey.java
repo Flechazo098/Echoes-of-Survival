@@ -7,12 +7,6 @@ import net.minecraft.util.RandomSource;
 
 import java.util.List;
 
-/**
- * A translation key holder that supports either a single string or a list of strings.
- * <p>
- * Datapack examples allow both {@code "title": "key"} and {@code "title": ["k1","k2"]}.
- * </p>
- */
 public record TextKey(List<String> keys) {
     public static final Codec<TextKey> CODEC = Codec.either(Codec.STRING, Codec.STRING.listOf())
             .xmap(
