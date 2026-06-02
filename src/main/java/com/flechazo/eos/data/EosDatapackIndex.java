@@ -208,16 +208,25 @@ public final class EosDatapackIndex {
     }
 
     public static List<ResourceLocation> questIdsFromPools(List<ResourceLocation> poolIds) {
+        return questIdsFromPools(poolIds, new Random());
+    }
+
+    public static List<ResourceLocation> questIdsFromPools(List<ResourceLocation> poolIds, Random random) {
         if (poolIds == null || poolIds.isEmpty()) return List.of();
         List<ResourceLocation> result = new ArrayList<>();
 
         for (ResourceLocation poolId : poolIds) {
             QuestPoolDefinition pool = questPoolsByFileId.get(poolId);
             if (pool == null) continue;
+            List<ResourceLocation> candidates = new ArrayList<>();
             for (ResourceLocation questId : pool.quests()) {
-                if (questsById.containsKey(questId)) {
-                    result.add(questId);
-                }
+                if (questsById.containsKey(questId)) candidates.add(questId);
+            }
+            if (candidates.isEmpty()) continue;
+            Collections.shuffle(candidates, random);
+            int rolls = Math.min(pool.rolls(), candidates.size());
+            for (int i = 0; i < rolls; i++) {
+                result.add(candidates.get(i));
             }
         }
         return List.copyOf(result);

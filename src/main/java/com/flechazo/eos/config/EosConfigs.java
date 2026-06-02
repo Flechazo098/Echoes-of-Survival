@@ -18,11 +18,11 @@ public final class EosConfigs {
             ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "survivor"),
             instance -> instance.group(
                     ConfigField.bool("enableSurvivors")
-                            .comment("是否启用幸存者系统（实体/交互/任务等）")
+                            .comment("Enable the survivor system, including entities, interaction, and quests.")
                             .defaultValue(true)
                             .forGetter(SurvivorConfig::enableSurvivors),
                     ConfigField.list("datapackNamespaces", com.mojang.serialization.Codec.STRING)
-                            .comment("允许加载幸存者数据的命名空间列表（默认同时支持 echoes 与 echoes_of_survival）")
+                            .comment("Namespaces allowed for survivor datapack data. Defaults to echoes and echoes_of_survival.")
                             .defaultValue(List.of(EchoesofSurvival.DATAPACK_NAMESPACE, EchoesofSurvival.MODID))
                             .forGetter(SurvivorConfig::datapackNamespaces)
             ).apply(instance, SurvivorConfig::new),
