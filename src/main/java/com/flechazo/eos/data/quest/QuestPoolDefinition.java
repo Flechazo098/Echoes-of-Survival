@@ -13,8 +13,9 @@ import java.util.List;
         syncToClient = true,
         validator = QuestPoolDefinition.Validator.class
 )
-public record QuestPoolDefinition(List<ResourceLocation> quests) {
+public record QuestPoolDefinition(int rolls, List<ResourceLocation> quests) {
     public static final Codec<QuestPoolDefinition> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+            Codec.INT.optionalFieldOf("rolls", 1).forGetter(QuestPoolDefinition::rolls),
             ResourceLocation.CODEC.listOf().fieldOf("quests").forGetter(QuestPoolDefinition::quests)
     ).apply(instance, QuestPoolDefinition::new));
 
@@ -23,6 +24,9 @@ public record QuestPoolDefinition(List<ResourceLocation> quests) {
         public ValidationResult validate(QuestPoolDefinition data, ResourceLocation source) {
             if (data == null || data.quests == null || data.quests.isEmpty()) {
                 return ValidationResult.failure("'quests' must not be empty");
+            }
+            if (data.rolls <= 0) {
+                return ValidationResult.failure("'rolls' must be > 0");
             }
             return ValidationResult.success();
         }
