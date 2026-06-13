@@ -79,7 +79,7 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
             addRenderableWidget(row);
         }
 
-        int receiveX = this.leftPos + 74;
+        int receiveX = this.leftPos + 78;
         int receiveY = this.topPos + this.imageHeight - 20;
         this.actionButton = addRenderableWidget(new TexturedButton(
                 receiveX,
@@ -264,19 +264,16 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
             graphics.drawString(this.font, Component.translatable("gui.echoes_of_survival.quest.reputation_required", reputationRequirementValue(quest)), x, 117, MUTED, false);
             return;
         }
-        y = 117;
-        graphics.drawString(this.font, Component.translatable("gui.echoes_of_survival.quest.rewards"), x, y, TEXT, false);
         int rewardX = x;
-        int rewardY = 130;
+        int rewardY = 117;
         for (int i = 0; i < quest.rewards().items().size(); i++) {
             ItemStackDef reward = quest.rewards().items().get(i);
             renderRewardIcon(graphics, reward, rewardX + i * 20, rewardY);
             if (i >= 1) break;
         }
         if (quest.rewards().reputation() != 0) {
-            graphics.drawString(this.font, Component.translatable("gui.echoes_of_survival.quest.reputation_reward", quest.rewards().reputation()), x + 52, 132, GOLD, false);
+            graphics.drawString(this.font, Component.translatable("gui.echoes_of_survival.quest.reputation_reward", quest.rewards().reputation()), x + 52, 119, GOLD, false);
         }
-        graphics.drawString(this.font, statusText(quest, entry), 205, 117, entry.claimed() || entry.completed() ? GOOD : MUTED, false);
     }
 
     private int drawWrapped(GuiGraphics graphics, Component component, int x, int y, int width, int color) {
