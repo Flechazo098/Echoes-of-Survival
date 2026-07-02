@@ -4,45 +4,35 @@ import com.flechazo.eos.client.skin.MojangSkinCache;
 import com.flechazo.eos.data.EosDatapackIndex;
 import com.flechazo.eos.data.trade.ProfessionDefinition;
 import com.flechazo.eos.entity.FriendlySurvivorEntity;
-import net.minecraft.client.model.HumanoidModel;
-import net.minecraft.client.model.geom.ModelLayers;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
-import net.minecraft.client.renderer.entity.HumanoidMobRenderer;
-import net.minecraft.client.renderer.entity.layers.HumanoidArmorLayer;
 import net.minecraft.resources.ResourceLocation;
 
-public class FriendlySurvivorRenderer extends HumanoidMobRenderer<FriendlySurvivorEntity, HumanoidModel<FriendlySurvivorEntity>> {
+public class FriendlySurvivorRenderer extends SurvivorPlayerRenderer<FriendlySurvivorEntity> {
     private static final ResourceLocation DEFAULT_TEXTURE =
             ResourceLocation.fromNamespaceAndPath("echoes", "textures/entity/survivor/friendly_survivor.png");
 
     public FriendlySurvivorRenderer(EntityRendererProvider.Context context) {
-        super(context, new HumanoidModel<>(context.bakeLayer(ModelLayers.PLAYER)), 0.5F);
-        this.addLayer(new HumanoidArmorLayer<>(
-                this,
-                new HumanoidModel<>(context.bakeLayer(ModelLayers.PLAYER_INNER_ARMOR)),
-                new HumanoidModel<>(context.bakeLayer(ModelLayers.PLAYER_OUTER_ARMOR)),
-                context.getModelManager()
-        ));
+        super(context);
     }
 
     @Override
-    public ResourceLocation getTextureLocation(FriendlySurvivorEntity entity) {
-        ResourceLocation forced = entity.getProfessionId()
+    protected SurvivorPlayerSkin skin(FriendlySurvivorEntity entity) {
+        SurvivorPlayerSkin forced = entity.getProfessionId()
                 .flatMap(EosDatapackIndex::profession)
                 .flatMap(ProfessionDefinition::skin)
+                .map(SurvivorPlayerSkin::fromDefinition)
                 .orElse(null);
         if (forced != null) {
             return forced;
         }
 
-        ResourceLocation mojang = entity.getSkinUuid()
+        SurvivorPlayerSkin mojang = entity.getSkinUuid()
                 .flatMap(MojangSkinCache::getOrRequest)
                 .orElse(null);
         if (mojang != null) {
             return mojang;
         }
 
-        return SurvivorSkins.pick(entity.getUUID(), SurvivorSkins.PRESET_POOL, DEFAULT_TEXTURE);
+        return SurvivorPlayerSkin.wide(SurvivorSkins.pick(entity.getUUID(), SurvivorSkins.PRESET_POOL, DEFAULT_TEXTURE));
     }
 }
-

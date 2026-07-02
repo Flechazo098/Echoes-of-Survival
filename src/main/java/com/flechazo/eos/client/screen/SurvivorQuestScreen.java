@@ -5,15 +5,15 @@ import com.flechazo.eos.data.EosDatapackIndex;
 import com.flechazo.eos.data.common.ItemStackDef;
 import com.flechazo.eos.data.common.TextKey;
 import com.flechazo.eos.data.quest.QuestDefinition;
+import com.flechazo.eos.data.reputation.ReputationTiersDefinition;
 import com.flechazo.eos.menu.SurvivorQuestMenu;
 import com.mojang.datafixers.util.Either;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.AbstractWidget;
-import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.Item;
@@ -24,63 +24,95 @@ import java.util.List;
 import java.util.Optional;
 
 public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMenu> {
-    private static final int LIST_ROWS = 6;
-    private static final int ROW_HEIGHT = 18;
-    private static final int SCREEN_WIDTH = 282;
-    private static final int SCREEN_HEIGHT = 165;
-    private static final int TASK_BUTTON_WIDTH = 59;
-    private static final int TASK_BUTTON_HEIGHT = 18;
-    private static final int RECEIVE_BUTTON_WIDTH = 194;
-    private static final int RECEIVE_BUTTON_HEIGHT = 12;
+    private static final float SCREEN_SCALE = 1.5F;
+    private static final int BASE_ROW_HEIGHT = 18;
+    private static final int BASE_SCREEN_WIDTH = 282;
+    private static final int BASE_SCREEN_HEIGHT = 165;
+    private static final int BASE_TASK_BUTTON_WIDTH = 59;
+    private static final int BASE_TASK_BUTTON_HEIGHT = 18;
+    private static final int BASE_RECEIVE_BUTTON_WIDTH = 194;
+    private static final int BASE_RECEIVE_BUTTON_HEIGHT = 12;
+    private static final int ROW_HEIGHT = scaled(BASE_ROW_HEIGHT);
+    private static final int SCREEN_WIDTH = scaled(BASE_SCREEN_WIDTH);
+    private static final int SCREEN_HEIGHT = scaled(BASE_SCREEN_HEIGHT);
+    private static final int TASK_BUTTON_WIDTH = scaled(BASE_TASK_BUTTON_WIDTH);
+    private static final int TASK_BUTTON_HEIGHT = scaled(BASE_TASK_BUTTON_HEIGHT);
+    private static final int RECEIVE_BUTTON_WIDTH = scaled(BASE_RECEIVE_BUTTON_WIDTH);
+    private static final int RECEIVE_BUTTON_HEIGHT = scaled(BASE_RECEIVE_BUTTON_HEIGHT);
+    private static final int DETAIL_X = scaled(88);
+    private static final int DETAIL_TOP = scaled(35);
+    private static final int DETAIL_WIDTH = SCREEN_WIDTH - DETAIL_X - scaled(10);
+    private static final int DETAIL_CONTENT_TOP = scaled(52);
+    private static final int DETAIL_CONTENT_BOTTOM = SCREEN_HEIGHT - scaled(28);
+    private static final int DETAIL_CONTENT_HEIGHT = DETAIL_CONTENT_BOTTOM - DETAIL_CONTENT_TOP;
+    private static final int DETAIL_SCROLL_STEP = 12;
+    private static final int SCROLL_START_PAUSE_TICKS = 8;
+    private static final int SCROLL_END_PAUSE_TICKS = 8;
+    private static final int SCROLL_PIXELS_PER_TICK = 1;
     private static final int TEXT = 0xFF101010;
     private static final int MUTED = 0xFF303030;
     private static final int GOOD = 0xFF1F6E2F;
     private static final int GOLD = 0xFF1A1A1A;
-    private static final ResourceLocation SCREEN_TEXTURE = guiTexture("npc_screen");
+    private static final ResourceLocation SCREEN_TEXTURE = guiTexture("request_screen");
     private static final ResourceLocation TASK_BUTTON = guiTexture("task_button");
     private static final ResourceLocation TASK_BUTTON_PRESSED = guiTexture("task_button_pressed");
     private static final ResourceLocation RECEIVE_BUTTON = guiTexture("receive_button");
     private static final ResourceLocation RECEIVE_BUTTON_PRESSED = guiTexture("receive_button_pressed");
+    private static final ResourceLocation SLOT = ResourceLocation.withDefaultNamespace("container/slot");
 
     private final List<TexturedButton> questButtons = new ArrayList<>();
     private final Inventory playerInventory;
+    private final long textSeed;
     private TexturedButton actionButton;
     private Action action = Action.NONE;
     private int selectedQuest = 0;
+    private int scrollOffset;
+    private int detailScrollOffset;
 
     public SurvivorQuestScreen(SurvivorQuestMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
         this.playerInventory = inventory;
+        this.textSeed = RandomSource.create().nextLong();
         this.imageWidth = SCREEN_WIDTH;
         this.imageHeight = SCREEN_HEIGHT;
-        this.inventoryLabelY = this.imageHeight - 94;
+        this.inventoryLabelY = this.imageHeight - scaled(94);
     }
 
     private static ResourceLocation guiTexture(String name) {
         return ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "textures/gui/" + name + ".png");
     }
 
+    private static int scaled(int value) {
+        return Math.round(value * SCREEN_SCALE);
+    }
+
     @Override
     protected void init() {
         super.init();
+        for (TexturedButton btn : this.questButtons) {
+            btn.visible = false;
+        }
         this.questButtons.clear();
 
-        int listX = this.leftPos + 6;
-        int listY = this.topPos + 18;
-        int rows = Math.min(LIST_ROWS, this.menu.questIds().size());
+        int listX = this.leftPos + scaled(6);
+        int listY = this.topPos + scaled(18);
+        int totalQuests = this.menu.questIds().size();
 
-        for (int i = 0; i < rows; i++) {
+        for (int i = 0; i < totalQuests; i++) {
             int idx = i;
-            TexturedButton row = new TexturedButton(listX, listY + (i * ROW_HEIGHT), TASK_BUTTON_WIDTH, TASK_BUTTON_HEIGHT, Component.empty(), TASK_BUTTON, TASK_BUTTON_PRESSED, () -> {
+            TexturedButton row = new TexturedButton(listX, listY + (i * ROW_HEIGHT), TASK_BUTTON_WIDTH, TASK_BUTTON_HEIGHT, Component.empty(), TASK_BUTTON, TASK_BUTTON_PRESSED, BASE_TASK_BUTTON_WIDTH, BASE_TASK_BUTTON_HEIGHT, true, SurvivorQuestScreen.this.font, () -> {
                 selectedQuest = idx;
+                detailScrollOffset = 0;
+                updateQuestButtonSelection();
                 updateActionButtons();
             });
             this.questButtons.add(row);
             addRenderableWidget(row);
         }
+        updateQuestButtonMessages();
 
-        int receiveX = this.leftPos + 78;
-        int receiveY = this.topPos + this.imageHeight - 20;
+        int receiveX = this.leftPos + scaled(78);
+        int receiveY = this.topPos + this.imageHeight - scaled(20);
         this.actionButton = addRenderableWidget(new TexturedButton(
                 receiveX,
                 receiveY,
@@ -89,27 +121,47 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
                 Component.empty(),
                 RECEIVE_BUTTON,
                 RECEIVE_BUTTON_PRESSED,
+                BASE_RECEIVE_BUTTON_WIDTH,
+                BASE_RECEIVE_BUTTON_HEIGHT,
+                false, SurvivorQuestScreen.this.font,
                 () -> {
                     switch (this.action) {
-                        case ACCEPT -> {
-                            sendButton(selectedQuest);
-                            optimisticAccept();
-                        }
-                        case SUBMIT -> {
-                            sendButton(1000 + selectedQuest);
-                            optimisticSubmit();
-                        }
-                        case CLAIM -> {
-                            sendButton(2000 + selectedQuest);
-                            optimisticClaim();
-                        }
+                        case ACCEPT -> sendButton(selectedQuest);
+                        case SUBMIT -> sendButton(1000 + selectedQuest);
+                        case CLAIM -> sendButton(2000 + selectedQuest);
                         default -> {
                         }
                     }
                 }
         ));
 
+        this.scrollOffset = 0;
+        this.detailScrollOffset = 0;
+        updateScrollVisibility();
+        updateQuestButtonSelection();
         updateActionButtons();
+    }
+
+    private void updateQuestButtonMessages() {
+        List<ResourceLocation> quests = this.menu.questIds();
+        for (int i = 0; i < this.questButtons.size(); i++) {
+            TexturedButton button = this.questButtons.get(i);
+            Component name;
+            if (i < quests.size()) {
+                QuestDefinition quest = EosDatapackIndex.quest(quests.get(i)).orElse(null);
+                name = quest != null ? randomizedText(quest.title(), quest.questId(), "title") : Component.literal(quests.get(i).toString());
+            } else {
+                name = Component.empty();
+            }
+            button.setMessage(name);
+            button.setTextColor(this.menu.questEntry(i).claimed() ? MUTED : TEXT);
+        }
+    }
+
+    private void updateQuestButtonSelection() {
+        for (int i = 0; i < this.questButtons.size(); i++) {
+            this.questButtons.get(i).setSelected(i == this.selectedQuest);
+        }
     }
 
     private void updateActionButtons() {
@@ -121,10 +173,12 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
         boolean claimed = entry.claimed();
 
         this.action = Action.NONE;
-        Component message = Component.translatable("gui.echoes_of_survival.quest.status.available");
+        Component message;
         boolean active = false;
         if (!hasQuest) {
             message = Component.translatable("gui.echoes_of_survival.quest.empty");
+        } else if (entry.maxReached()) {
+            message = Component.translatable("gui.echoes_of_survival.quest.status.max_reached");
         } else if (!meetsReputationRequirement(quest)) {
             message = Component.translatable("gui.echoes_of_survival.quest.status.locked");
         } else if (!accepted) {
@@ -148,63 +202,59 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
         this.actionButton.active = active;
     }
 
+    private void updateScrollVisibility() {
+        int totalQuests = this.menu.questIds().size();
+        int availableHeight = this.imageHeight - scaled(38);
+        int maxVisible = Math.max(1, availableHeight / ROW_HEIGHT);
+        int maxScroll = Math.max(0, totalQuests - maxVisible);
+        this.scrollOffset = Math.clamp(this.scrollOffset, 0, maxScroll);
+
+        int listY = this.topPos + scaled(18);
+        for (int i = 0; i < this.questButtons.size(); i++) {
+            TexturedButton btn = this.questButtons.get(i);
+            int visualIndex = i - this.scrollOffset;
+            boolean visible = visualIndex >= 0 && visualIndex < maxVisible;
+            btn.visible = visible;
+            if (visible) {
+                btn.setY(listY + visualIndex * ROW_HEIGHT);
+            }
+        }
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
+        if (deltaY != 0 && isMouseOverDetail(mouseX, mouseY)) {
+            int oldOffset = this.detailScrollOffset;
+            this.detailScrollOffset -= (int) Math.signum(deltaY) * DETAIL_SCROLL_STEP;
+            clampDetailScroll();
+            if (this.detailScrollOffset != oldOffset) return true;
+        }
+        if (deltaY != 0) {
+            int oldOffset = this.scrollOffset;
+            this.scrollOffset -= (int) Math.signum(deltaY);
+            updateScrollVisibility();
+            if (this.scrollOffset != oldOffset) return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, deltaX, deltaY);
+    }
+
     private void sendButton(int buttonId) {
         if (this.minecraft == null || this.minecraft.gameMode == null) return;
         this.minecraft.gameMode.handleInventoryButtonClick(this.menu.containerId, buttonId);
     }
 
-    private void optimisticAccept() {
-        QuestDefinition quest = selectedQuest();
-        if (quest == null || !meetsReputationRequirement(quest)) return;
-        SurvivorQuestMenu.QuestEntry entry = this.menu.questEntry(selectedQuest);
-        if (entry.accepted()) return;
-
-        this.menu.updateQuestEntry(selectedQuest, new SurvivorQuestMenu.QuestEntry(
-                quest.questId(),
-                zeroProgress(quest),
-                false,
-                false
-        ));
+    public void onQuestStateUpdated() {
+        int questCount = this.menu.questIds().size();
+        this.selectedQuest = Math.clamp(this.selectedQuest, 0, Math.max(0, questCount - 1));
+        if (this.questButtons.size() != questCount && this.minecraft != null) {
+            this.init(this.minecraft, this.width, this.height);
+            return;
+        }
+        clampDetailScroll();
+        updateScrollVisibility();
+        updateQuestButtonMessages();
+        updateQuestButtonSelection();
         updateActionButtons();
-    }
-
-    private void optimisticSubmit() {
-        QuestDefinition quest = selectedQuest();
-        if (quest == null || !quest.type().equals(QuestDefinition.TYPE_SUBMIT_ITEMS) || !hasSubmissionItems(quest)) return;
-        SurvivorQuestMenu.QuestEntry entry = this.menu.questEntry(selectedQuest);
-        if (!entry.accepted() || entry.completed()) return;
-
-        this.menu.updateQuestEntry(selectedQuest, new SurvivorQuestMenu.QuestEntry(
-                quest.questId(),
-                completedProgress(quest),
-                true,
-                entry.claimed()
-        ));
-        updateActionButtons();
-    }
-
-    private void optimisticClaim() {
-        QuestDefinition quest = selectedQuest();
-        if (quest == null) return;
-        SurvivorQuestMenu.QuestEntry entry = this.menu.questEntry(selectedQuest);
-        if (!entry.completed() || entry.claimed()) return;
-
-        this.menu.updateQuestEntry(selectedQuest, new SurvivorQuestMenu.QuestEntry(
-                quest.questId(),
-                entry.objectiveProgress(),
-                true,
-                true
-        ));
-        this.menu.addPlayerReputation(quest.rewards().reputation());
-        updateActionButtons();
-    }
-
-    private List<Integer> zeroProgress(QuestDefinition quest) {
-        return quest.objectives().stream().map(objective -> 0).toList();
-    }
-
-    private List<Integer> completedProgress(QuestDefinition quest) {
-        return quest.objectives().stream().map(QuestDefinition.Objective::count).toList();
     }
 
     private QuestDefinition selectedQuest() {
@@ -214,22 +264,18 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
 
     @Override
     protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
-        graphics.blit(SCREEN_TEXTURE, this.leftPos, this.topPos, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 512, 256);
+        graphics.pose().pushPose();
+        graphics.pose().translate(this.leftPos, this.topPos, 0);
+        graphics.pose().scale(SCREEN_SCALE, SCREEN_SCALE, 1.0F);
+        graphics.blit(SCREEN_TEXTURE, 0, 0, 0, 0, BASE_SCREEN_WIDTH, BASE_SCREEN_HEIGHT, 512, 256);
+        graphics.pose().popPose();
     }
 
     @Override
     protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
-        List<ResourceLocation> quests = this.menu.questIds();
-        int rows = Math.min(LIST_ROWS, quests.size());
-        for (int i = 0; i < rows; i++) {
-            int y = 18 + i * ROW_HEIGHT;
-
-            QuestDefinition quest = EosDatapackIndex.quest(quests.get(i)).orElse(null);
-            Component name = quest != null ? stableText(quest.title()) : Component.literal(quests.get(i).toString());
-            Component trimmed = trimToWidth(name, 52);
-            int color = this.menu.questEntry(i).claimed() ? MUTED : TEXT;
-            graphics.drawString(this.font, trimmed, 9, y + 5, color, false);
-        }
+        Component screenTitle = trimToWidth(this.title, scaled(184));
+        int titleX = (this.imageWidth - this.font.width(screenTitle)) / 2;
+        graphics.drawString(this.font, screenTitle, titleX, scaled(6), TEXT, false);
 
         renderQuestDetails(graphics);
     }
@@ -237,43 +283,86 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
     private void renderQuestDetails(GuiGraphics graphics) {
         QuestDefinition quest = selectedQuest();
         if (quest == null) {
-            graphics.drawString(this.font, Component.translatable("gui.echoes_of_survival.quest.empty"), 88, 34, MUTED, false);
+            graphics.drawString(this.font, Component.translatable("gui.echoes_of_survival.quest.empty"), DETAIL_X, DETAIL_TOP, MUTED, false);
             return;
         }
 
         SurvivorQuestMenu.QuestEntry entry = this.menu.questEntry(selectedQuest);
-        int x = 88;
+        int x = DETAIL_X;
 
-        graphics.drawString(this.font, trimToWidth(stableText(quest.title()), 170), x, 35, GOLD, false);
+        graphics.drawString(this.font, trimToWidth(randomizedText(quest.title(), quest.questId(), "title"), DETAIL_WIDTH), x, DETAIL_TOP, GOLD, false);
 
-        int y = 62;
-        y = drawWrapped(graphics, stableText(quest.description()), x, y, 184, MUTED, 3);
-        y += 4;
+        clampDetailScroll();
+        graphics.enableScissor(this.leftPos + x, this.topPos + DETAIL_CONTENT_TOP, this.leftPos + x + DETAIL_WIDTH, this.topPos + DETAIL_CONTENT_BOTTOM);
+        int y = DETAIL_CONTENT_TOP - this.detailScrollOffset;
+        y = drawWrapped(graphics, randomizedText(quest.description(), quest.questId(), "description"), x, y, DETAIL_WIDTH, MUTED);
+        y += 6;
 
         graphics.drawString(this.font, Component.translatable("gui.echoes_of_survival.quest.objectives"), x, y, TEXT, false);
         y += 12;
         for (int i = 0; i < quest.objectives().size(); i++) {
             QuestDefinition.Objective objective = quest.objectives().get(i);
             int progress = i < entry.objectiveProgress().size() ? entry.objectiveProgress().get(i) : 0;
-            graphics.drawString(this.font, objectiveText(objective, progress), x + 8, y, objectiveDone(objective, progress) ? GOOD : MUTED, false);
-            y += 11;
-            if (y > 100) break;
+            y = drawWrapped(graphics, objectiveText(objective, progress), x + scaled(8), y, DETAIL_WIDTH - scaled(8), objectiveDone(objective, progress) ? GOOD : MUTED);
+            y += 2;
         }
 
+        y += 14;
         if (!meetsReputationRequirement(quest)) {
-            graphics.drawString(this.font, Component.translatable("gui.echoes_of_survival.quest.reputation_required", reputationRequirementValue(quest)), x, 117, MUTED, false);
+            drawWrapped(graphics, Component.translatable("gui.echoes_of_survival.quest.reputation_required", reputationRequirementValue(quest)), x, y, DETAIL_WIDTH, MUTED);
+            graphics.disableScissor();
             return;
         }
-        int rewardX = x;
-        int rewardY = 117;
+        graphics.drawString(this.font, Component.translatable("gui.echoes_of_survival.quest.rewards"), x, y, TEXT, false);
+        y += 27;
+        int rewardX = x + scaled(4);
+        int rewardY = y;
         for (int i = 0; i < quest.rewards().items().size(); i++) {
             ItemStackDef reward = quest.rewards().items().get(i);
             renderRewardIcon(graphics, reward, rewardX + i * 20, rewardY);
             if (i >= 1) break;
         }
         if (quest.rewards().reputation() != 0) {
-            graphics.drawString(this.font, Component.translatable("gui.echoes_of_survival.quest.reputation_reward", quest.rewards().reputation()), x + 52, 119, GOLD, false);
+            graphics.drawString(this.font, Component.translatable("gui.echoes_of_survival.quest.reputation_reward", quest.rewards().reputation()), x + 52, rewardY + 2, GOLD, false);
         }
+        graphics.disableScissor();
+    }
+
+    private boolean isMouseOverDetail(double mouseX, double mouseY) {
+        int x = this.leftPos + DETAIL_X;
+        int y = this.topPos + DETAIL_CONTENT_TOP;
+        return mouseX >= x && mouseX < x + DETAIL_WIDTH && mouseY >= y && mouseY < y + DETAIL_CONTENT_HEIGHT;
+    }
+
+    private void clampDetailScroll() {
+        this.detailScrollOffset = Math.clamp(this.detailScrollOffset, 0, maxDetailScroll());
+    }
+
+    private int maxDetailScroll() {
+        QuestDefinition quest = selectedQuest();
+        if (quest == null) return 0;
+        SurvivorQuestMenu.QuestEntry entry = this.menu.questEntry(selectedQuest);
+        return Math.max(0, detailContentHeight(quest, entry) - DETAIL_CONTENT_HEIGHT);
+    }
+
+    private int detailContentHeight(QuestDefinition quest, SurvivorQuestMenu.QuestEntry entry) {
+        int height = 0;
+        height += this.font.split(randomizedText(quest.description(), quest.questId(), "description"), DETAIL_WIDTH).size() * 10;
+        height += 6;
+        height += 12;
+        for (int i = 0; i < quest.objectives().size(); i++) {
+            QuestDefinition.Objective objective = quest.objectives().get(i);
+            int progress = i < entry.objectiveProgress().size() ? entry.objectiveProgress().get(i) : 0;
+            height += this.font.split(objectiveText(objective, progress), DETAIL_WIDTH - scaled(8)).size() * 10;
+            height += 2;
+        }
+        height += 14;
+        if (!meetsReputationRequirement(quest)) {
+            height += this.font.split(Component.translatable("gui.echoes_of_survival.quest.reputation_required", reputationRequirementValue(quest)), DETAIL_WIDTH).size() * 10;
+        } else {
+            height += 49;
+        }
+        return height;
     }
 
     private int drawWrapped(GuiGraphics graphics, Component component, int x, int y, int width, int color) {
@@ -308,6 +397,7 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
             return;
         }
         ItemStack stack = new ItemStack(item.get(), Math.max(1, reward.count()));
+        graphics.blitSprite(SLOT, x - 1, y - 1, 18, 18);
         graphics.renderItem(stack, x, y);
         graphics.renderItemDecorations(this.font, stack, x, y);
     }
@@ -338,11 +428,16 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
         return Component.translatable("gui.echoes_of_survival.quest.status.available");
     }
 
-    private Component stableText(TextKey key) {
+    private Component randomizedText(TextKey key, ResourceLocation questId, String field) {
         if (key.keys() == null || key.keys().isEmpty()) {
             return Component.empty();
         }
-        return Component.translatable(key.keys().getFirst());
+        long seed = this.textSeed;
+        if (questId != null) {
+            seed ^= questId.hashCode();
+        }
+        seed ^= field.hashCode();
+        return key.toComponent(RandomSource.create(seed));
     }
 
     private int reputationRequirementValue(QuestDefinition quest) {
@@ -350,7 +445,7 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
         return quest.requireReputation().get().map(
                 value -> value,
                 tier -> EosDatapackIndex.reputationTierByName(tier)
-                        .map(repTier -> repTier.min())
+                        .map(ReputationTiersDefinition.Tier::min)
                         .orElse(0)
         );
     }
@@ -362,7 +457,7 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
         int required = quest.requireReputation().get().map(
                 value -> value,
                 tier -> EosDatapackIndex.reputationTierByName(tier)
-                        .map(repTier -> repTier.min())
+                        .map(ReputationTiersDefinition.Tier::min)
                         .orElse(Integer.MAX_VALUE)
         );
         return this.menu.playerReputation() >= required;
@@ -405,44 +500,6 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
         CLAIM
     }
 
-    private class TexturedButton extends AbstractWidget {
-        private final ResourceLocation texture;
-        private final ResourceLocation hoverTexture;
-        private final Runnable onPress;
-
-        private TexturedButton(int x, int y, int width, int height, Component message, ResourceLocation texture, ResourceLocation hoverTexture, Runnable onPress) {
-            super(x, y, width, height, message);
-            this.texture = texture;
-            this.hoverTexture = hoverTexture;
-            this.onPress = onPress;
-        }
-
-        @Override
-        public void onClick(double mouseX, double mouseY) {
-            if (this.active) {
-                this.onPress.run();
-            }
-        }
-
-        @Override
-        protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-            ResourceLocation current = this.isHoveredOrFocused() && this.active ? this.hoverTexture : this.texture;
-            int textureWidth = current == RECEIVE_BUTTON || current == RECEIVE_BUTTON_PRESSED ? RECEIVE_BUTTON_WIDTH : this.width;
-            int textureHeight = current == RECEIVE_BUTTON || current == RECEIVE_BUTTON_PRESSED ? RECEIVE_BUTTON_HEIGHT : this.height;
-            graphics.blit(current, this.getX(), this.getY(), 0, 0, this.width, this.height, textureWidth, textureHeight);
-            if (!this.getMessage().getString().isEmpty()) {
-                int color = this.active ? TEXT : MUTED;
-                int textX = this.getX() + (this.width - SurvivorQuestScreen.this.font.width(this.getMessage())) / 2;
-                int textY = this.getY() + (this.height - 8) / 2;
-                graphics.drawString(SurvivorQuestScreen.this.font, this.getMessage(), textX, textY, color, false);
-            }
-        }
-
-        @Override
-        protected void updateWidgetNarration(NarrationElementOutput narrationElementOutput) {
-            this.defaultButtonNarrationText(narrationElementOutput);
-        }
-    }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {

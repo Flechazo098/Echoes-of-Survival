@@ -20,6 +20,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 
 import java.util.*;
+import java.util.function.Predicate;
 
 @EventBusSubscriber(modid = EchoesofSurvival.MODID)
 public final class EosDatapackIndex {
@@ -208,10 +209,14 @@ public final class EosDatapackIndex {
     }
 
     public static List<ResourceLocation> questIdsFromPools(List<ResourceLocation> poolIds) {
-        return questIdsFromPools(poolIds, new Random());
+        return questIdsFromPools(poolIds, new Random(), questId -> true);
     }
 
     public static List<ResourceLocation> questIdsFromPools(List<ResourceLocation> poolIds, Random random) {
+        return questIdsFromPools(poolIds, random, questId -> true);
+    }
+
+    public static List<ResourceLocation> questIdsFromPools(List<ResourceLocation> poolIds, Random random, Predicate<ResourceLocation> questFilter) {
         if (poolIds == null || poolIds.isEmpty()) return List.of();
         List<ResourceLocation> result = new ArrayList<>();
 
@@ -220,7 +225,9 @@ public final class EosDatapackIndex {
             if (pool == null) continue;
             List<ResourceLocation> candidates = new ArrayList<>();
             for (ResourceLocation questId : pool.quests()) {
-                if (questsById.containsKey(questId)) candidates.add(questId);
+                if (questsById.containsKey(questId) && (questFilter == null || questFilter.test(questId))) {
+                    candidates.add(questId);
+                }
             }
             if (candidates.isEmpty()) continue;
             Collections.shuffle(candidates, random);

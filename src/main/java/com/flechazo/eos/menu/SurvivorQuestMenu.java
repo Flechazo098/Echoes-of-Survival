@@ -1,8 +1,11 @@
 package com.flechazo.eos.menu;
 
 import com.flechazo.eos.data.EosDatapackIndex;
+import com.flechazo.eos.data.quest.QuestDefinition;
+import com.flechazo.eos.data.reputation.ReputationTiersDefinition;
 import com.flechazo.eos.data.trade.ProfessionDefinition;
 import com.flechazo.eos.entity.FriendlySurvivorEntity;
+import com.flechazo.eos.network.SurvivorQuestStatePayload;
 import com.flechazo.eos.quest.PlayerQuestState;
 import com.flechazo.eos.quest.QuestApi;
 import com.flechazo.eos.reputation.ReputationApi;
@@ -23,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 public class SurvivorQuestMenu extends AbstractContainerMenu {
     private final int survivorEntityId;
@@ -42,7 +46,7 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
         for (int i = 0; i < size; i++) {
             ids.add(buf.readResourceLocation());
         }
-        this.questIds = List.copyOf(ids);
+        this.questIds = new ArrayList<>(ids);
         List<QuestEntry> entries = new ArrayList<>();
         for (int i = 0; i < size; i++) {
             ResourceLocation questId = buf.readResourceLocation();
@@ -53,15 +57,16 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
             }
             boolean completed = buf.readBoolean();
             boolean claimed = buf.readBoolean();
-            entries.add(new QuestEntry(questId, List.copyOf(objectiveProgress), completed, claimed));
+            boolean maxReached = buf.readBoolean();
+            entries.add(new QuestEntry(questId, List.copyOf(objectiveProgress), completed, claimed, maxReached));
         }
-        this.questEntries = entries;
+        this.questEntries = new ArrayList<>(entries);
     }
 
     public SurvivorQuestMenu(int containerId, Inventory inventory, FriendlySurvivorEntity survivor, List<ResourceLocation> questIds) {
         super(EosMenus.SURVIVOR_QUEST.get(), containerId);
         this.survivorEntityId = survivor.getId();
-        this.questIds = List.copyOf(questIds);
+        this.questIds = new ArrayList<>(questIds);
         this.questEntries = new ArrayList<>();
         this.playerReputation = 0;
     }
@@ -69,7 +74,7 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
     private SurvivorQuestMenu(int containerId, Inventory inventory, FriendlySurvivorEntity survivor, List<ResourceLocation> questIds, List<QuestEntry> questEntries, int playerReputation) {
         super(EosMenus.SURVIVOR_QUEST.get(), containerId);
         this.survivorEntityId = survivor.getId();
-        this.questIds = List.copyOf(questIds);
+        this.questIds = new ArrayList<>(questIds);
         this.questEntries = new ArrayList<>(questEntries);
         this.playerReputation = playerReputation;
     }
@@ -79,7 +84,7 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
     }
 
     public List<ResourceLocation> questIds() {
-        return questIds;
+        return List.copyOf(questIds);
     }
 
     public int playerReputation() {
@@ -88,6 +93,18 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
 
     public void addPlayerReputation(int amount) {
         this.playerReputation += amount;
+    }
+
+    public void replaceQuestState(List<ResourceLocation> questIds, List<QuestEntry> entries, int playerReputation) {
+        this.questIds.clear();
+        if (questIds != null) {
+            this.questIds.addAll(questIds);
+        }
+        this.questEntries.clear();
+        if (entries != null) {
+            this.questEntries.addAll(entries);
+        }
+        this.playerReputation = playerReputation;
     }
 
     public QuestEntry questEntry(int index) {
@@ -133,34 +150,51 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
         if (idx < 0 || idx >= questIds.size()) return false;
 
         ResourceLocation questId = questIds.get(idx);
-        return switch (action) {
+        boolean handled = switch (action) {
             case ACCEPT -> QuestApi.accept(sp, questId);
             case SUBMIT -> QuestApi.submitItems(sp, questId);
             case CLAIM -> QuestApi.claim(sp, questId);
         };
+        if (handled) {
+            Entity entity = sp.level().getEntity(this.survivorEntityId);
+            if (entity instanceof FriendlySurvivorEntity survivor) {
+                SurvivorQuestStatePayload.create(sp, survivor).sendTo(sp);
+            }
+        }
+        return handled;
     }
 
-    public static void open(ServerPlayer player, FriendlySurvivorEntity survivor) {
-        if (player.level().isClientSide) return;
+    @Override
+    public void removed(Player player) {
+        super.removed(player);
+        Entity entity = player.level().getEntity(this.survivorEntityId);
+        if (entity instanceof FriendlySurvivorEntity survivor) {
+            survivor.endMenuInteraction(player);
+        }
+    }
+
+    public static boolean open(ServerPlayer player, FriendlySurvivorEntity survivor) {
+        if (player.level().isClientSide) return false;
 
         ResourceLocation professionId = survivor.getProfessionId().orElse(null);
-        if (professionId == null) return;
+        if (professionId == null) return false;
 
         ProfessionDefinition profession = EosDatapackIndex.profession(professionId).orElse(null);
-        if (profession == null) return;
+        if (profession == null) return false;
 
-        List<ResourceLocation> quests = EosDatapackIndex.questIdsFromPools(profession.logic().questPools(), new Random(questSeed(survivor)));
+        List<ResourceLocation> quests = currentQuestIdsFor(player, survivor);
 
+        survivor.beginMenuInteraction(player);
         player.openMenu(
                 new MenuProvider() {
                     @Override
                     public Component getDisplayName() {
-                        return Component.translatable("gui.echoes_of_survival.survivor.quest");
+                        return survivor.getDisplayName();
                     }
 
                     @Override
                     public @NotNull AbstractContainerMenu createMenu(int containerId, Inventory inv, Player p) {
-                        return new SurvivorQuestMenu(containerId, inv, survivor, quests, questEntriesFor(player, quests), ReputationApi.get(player));
+                        return new SurvivorQuestMenu(containerId, inv, survivor, quests, currentQuestEntriesFor(player, quests), ReputationApi.get(player));
                     }
                 },
                 buf -> {
@@ -170,7 +204,7 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
                     for (ResourceLocation q : quests) {
                         buf.writeResourceLocation(q);
                     }
-                    List<QuestEntry> entries = questEntriesFor(player, quests);
+                    List<QuestEntry> entries = currentQuestEntriesFor(player, quests);
                     for (QuestEntry entry : entries) {
                         buf.writeResourceLocation(entry.questId());
                         buf.writeVarInt(entry.objectiveProgress().size());
@@ -179,28 +213,68 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
                         }
                         buf.writeBoolean(entry.completed());
                         buf.writeBoolean(entry.claimed());
+                        buf.writeBoolean(entry.maxReached());
                     }
                 }
         );
+        return true;
     }
 
-    private static List<QuestEntry> questEntriesFor(ServerPlayer player, List<ResourceLocation> quests) {
+    public static List<ResourceLocation> currentQuestIdsFor(ServerPlayer player, FriendlySurvivorEntity survivor) {
+        ResourceLocation professionId = survivor.getProfessionId().orElse(null);
+        if (professionId == null) return List.of();
+
+        ProfessionDefinition profession = EosDatapackIndex.profession(professionId).orElse(null);
+        if (profession == null) return List.of();
+
+        return EosDatapackIndex.questIdsFromPools(
+                profession.logic().questPools(),
+                new Random(questSeed(survivor)),
+                unlockedFor(player)
+        );
+    }
+
+    public static List<QuestEntry> currentQuestEntriesFor(ServerPlayer player, List<ResourceLocation> quests) {
         Map<ResourceLocation, PlayerQuestState.QuestProgress> active = QuestApi.getState(player).active();
         List<QuestEntry> entries = new ArrayList<>();
         for (ResourceLocation questId : quests) {
             PlayerQuestState.QuestProgress progress = active.get(questId);
             if (progress == null) {
-                entries.add(QuestEntry.available(questId));
+                QuestDefinition def = EosDatapackIndex.quest(questId).orElse(null);
+                if (def != null && def.repeatable() && def.maxRepeats() > 0
+                        && QuestApi.getCompletions(player, questId) >= def.maxRepeats()) {
+                    entries.add(new QuestEntry(questId, List.of(), false, false, true));
+                } else {
+                    entries.add(QuestEntry.available(questId));
+                }
             } else {
                 entries.add(new QuestEntry(
                         questId,
                         progress.objectiveProgress(),
                         progress.completed(),
-                        progress.claimed()
+                        progress.claimed(),
+                        false
                 ));
             }
         }
         return entries;
+    }
+
+    private static Predicate<ResourceLocation> unlockedFor(ServerPlayer player) {
+        int reputation = ReputationApi.get(player);
+        return questId -> {
+            QuestDefinition def = EosDatapackIndex.quest(questId).orElse(null);
+            if (def == null) return false;
+            if (def.requireReputation().isEmpty()) return true;
+
+            int required = def.requireReputation().get().map(
+                    value -> value,
+                    tier -> EosDatapackIndex.reputationTierByName(tier)
+                            .map(ReputationTiersDefinition.Tier::min)
+                            .orElse(Integer.MAX_VALUE)
+            );
+            return reputation >= required;
+        };
     }
 
     private static long questSeed(FriendlySurvivorEntity survivor) {
@@ -212,10 +286,11 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
             ResourceLocation questId,
             List<Integer> objectiveProgress,
             boolean completed,
-            boolean claimed
+            boolean claimed,
+            boolean maxReached
     ) {
         public static QuestEntry available(ResourceLocation questId) {
-            return new QuestEntry(questId, List.of(), false, false);
+            return new QuestEntry(questId, List.of(), false, false, false);
         }
 
         public boolean accepted() {

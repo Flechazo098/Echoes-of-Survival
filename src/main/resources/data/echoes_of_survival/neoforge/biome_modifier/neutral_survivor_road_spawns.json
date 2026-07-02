@@ -1,0 +1,10 @@
+{
+  "type": "neoforge:add_spawns",
+  "biomes": "#echoes:roads",
+  "spawners": {
+    "type": "echoes_of_survival:neutral_survivor",
+    "weight": 10,
+    "minCount": 1,
+    "maxCount": 2
+  }
+}

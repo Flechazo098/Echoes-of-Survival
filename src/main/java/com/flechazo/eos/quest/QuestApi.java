@@ -33,6 +33,11 @@ public final class QuestApi {
         QuestDefinition def = EosDatapackIndex.quest(questId).orElse(null);
         if (def == null) return false;
 
+        if (def.repeatable() && def.maxRepeats() > 0) {
+            int completions = getCompletions(player, questId);
+            if (completions >= def.maxRepeats()) return false;
+        }
+
         if (def.requireReputation().isPresent()) {
             int rep = ReputationApi.get(player);
             int required = def.requireReputation().get().map(
@@ -50,7 +55,7 @@ public final class QuestApi {
 
         List<Integer> progress = new ArrayList<>(Collections.nCopies(def.objectives().size(), 0));
         next.put(questId, new PlayerQuestState.QuestProgress(questId, List.copyOf(progress), false, false));
-        setState(player, new PlayerQuestState(next));
+        setState(player, new PlayerQuestState(next, state.completions()));
         return true;
     }
 
@@ -74,14 +79,28 @@ public final class QuestApi {
         }
 
         Map<ResourceLocation, PlayerQuestState.QuestProgress> next = new HashMap<>(state.active());
-        next.put(questId, new PlayerQuestState.QuestProgress(
-                progress.questId(),
-                progress.objectiveProgress(),
-                progress.completed(),
-                true
-        ));
-        setState(player, new PlayerQuestState(next));
+        Map<ResourceLocation, Integer> nextCompletions = new HashMap<>(state.completions());
+
+        if (def.repeatable()) {
+            next.remove(questId);
+            if (def.maxRepeats() > 0) {
+                nextCompletions.merge(questId, 1, Integer::sum);
+            }
+        } else {
+            next.put(questId, new PlayerQuestState.QuestProgress(
+                    progress.questId(),
+                    progress.objectiveProgress(),
+                    true,
+                    true
+            ));
+        }
+
+        setState(player, new PlayerQuestState(next, Map.copyOf(nextCompletions)));
         return true;
+    }
+
+    public static int getCompletions(ServerPlayer player, ResourceLocation questId) {
+        return getState(player).completions().getOrDefault(questId, 0);
     }
 
     public static void onKill(ServerPlayer player, LivingEntity killed) {
@@ -132,7 +151,7 @@ public final class QuestApi {
         }
 
         if (changed) {
-            setState(player, new PlayerQuestState(next));
+            setState(player, new PlayerQuestState(next, state.completions()));
         }
     }
 
@@ -177,7 +196,7 @@ public final class QuestApi {
                 true,
                 prog.claimed()
         ));
-        setState(player, new PlayerQuestState(next));
+        setState(player, new PlayerQuestState(next, state.completions()));
         return true;
     }
 

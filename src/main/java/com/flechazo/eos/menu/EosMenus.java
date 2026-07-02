@@ -22,8 +22,12 @@ public final class EosMenus {
             () -> new MenuType<>((IContainerFactory<SurvivorQuestMenu>) SurvivorQuestMenu::new, FeatureFlags.VANILLA_SET)
     );
 
+    public static final Supplier<MenuType<SurvivorPersonalMenu>> SURVIVOR_PERSONAL = MENUS.register(
+            "survivor_personal",
+            () -> new MenuType<>((IContainerFactory<SurvivorPersonalMenu>) SurvivorPersonalMenu::new, FeatureFlags.VANILLA_SET)
+    );
+
     public static void register(IEventBus bus) {
         MENUS.register(bus);
     }
 }
-

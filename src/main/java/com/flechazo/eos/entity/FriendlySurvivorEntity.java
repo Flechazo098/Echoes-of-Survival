@@ -2,7 +2,6 @@ package com.flechazo.eos.entity;
 
 import cc.sighs.oelib.data.DataManager;
 import com.flechazo.eos.data.EosDatapackIndex;
-import com.flechazo.eos.data.armor.ArmorSetDefinition;
 import com.flechazo.eos.data.reputation.ReputationTiersDefinition;
 import com.flechazo.eos.data.trade.ProfessionDefinition;
 import com.flechazo.eos.data.trade.TradePoolDefinition;
@@ -10,18 +9,20 @@ import com.flechazo.eos.entity.ai.goal.*;
 import com.flechazo.eos.menu.SurvivorQuestMenu;
 import com.flechazo.eos.reputation.ReputationApi;
 import com.flechazo.eos.reputation.ReputationTiers;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.stats.Stats;
 import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.food.FoodData;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -39,6 +40,7 @@ import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.item.trading.MerchantOffers;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ServerLevelAccessor;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -47,18 +49,25 @@ import java.util.Optional;
 import java.util.UUID;
 
 public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
+    private static final int INTERACTION_COMBAT_GRACE_TICKS = 100;
     private static final EntityDataAccessor<String> PROFESSION_ID =
             SynchedEntityData.defineId(FriendlySurvivorEntity.class, EntityDataSerializers.STRING);
     private static final EntityDataAccessor<String> SKIN_UUID =
             SynchedEntityData.defineId(FriendlySurvivorEntity.class, EntityDataSerializers.STRING);
+    private static final EntityDataAccessor<String> RECRUIT_OWNER_UUID =
+            SynchedEntityData.defineId(FriendlySurvivorEntity.class, EntityDataSerializers.STRING);
 
     private static final String NBT_PROFESSION_ID = "EosProfessionId";
     private static final String NBT_SKIN_UUID = "EosSkinUuid";
+    private static final String NBT_RECRUIT_OWNER_UUID = "EosRecruitOwnerUuid";
 
     private final List<Integer> offerReputationGains = new ArrayList<>();
-    public final net.neoforged.neoforge.items.ItemStackHandler tacticalInventory = new net.neoforged.neoforge.items.ItemStackHandler(9);
     private boolean chargingCrossbow = false;
     private int lastCombatTick = -100000;
+    private final FoodData survivorFood = new FoodData();
+    @Nullable
+    private UUID interactingPlayerId;
+    private InteractionLockMode interactionLockMode = InteractionLockMode.NONE;
 
     public FriendlySurvivorEntity(EntityType<? extends AbstractSurvivorEntity> type, Level level) {
         super(type, level);
@@ -73,7 +82,12 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     public SpawnGroupData finalizeSpawn(ServerLevelAccessor level, DifficultyInstance difficulty, MobSpawnType spawnType, SpawnGroupData groupData) {
         var data = super.finalizeSpawn(level, difficulty, spawnType, groupData);
         ensureProfessionAssigned();
-        applyInitialEquipmentIfNeeded();
+        getProfessionId()
+                .flatMap(EosDatapackIndex::profession)
+                .ifPresent(profession -> {
+                    ensureSkinAssigned(profession);
+                    applyProfessionEquipment(profession);
+                });
         return data;
     }
 
@@ -90,6 +104,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         super.defineSynchedData(builder);
         builder.define(PROFESSION_ID, "");
         builder.define(SKIN_UUID, "");
+        builder.define(RECRUIT_OWNER_UUID, "");
     }
 
     @Override
@@ -102,6 +117,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         this.goalSelector.addGoal(4, new OpenFenceGoal(this, true));
         this.goalSelector.addGoal(5, new SurvivorEatFoodGoal(this, 0.45F, 20 * 6, 20 * 10, 10.0F));
         this.goalSelector.addGoal(6, new SurvivorUsePotionGoal(this, () -> this.tacticalInventory));
+        this.goalSelector.addGoal(7, new FollowRecruitOwnerGoal(this, 1.05, 4.0F, 16.0F));
         this.goalSelector.addGoal(8, new SurvivorWeaponSwitchGoal(this, 4.0));
 
         this.goalSelector.addGoal(9, new SurvivorRangedCrossbowAttackGoal<>(this, 1.10, 16.0F));
@@ -123,6 +139,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
                 false,
                 living -> {
                     if (!(living instanceof ServerPlayer sp)) return false;
+                    if (isRecruitOwner(sp)) return false;
                     int rep = ReputationApi.get(sp);
                     return ReputationTiers.isHostileToPlayer(rep);
                 }
@@ -140,6 +157,10 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         ));
 
         this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Monster.class, 5, false, false, null));
+    }
+
+    public FoodData getSurvivorFood() {
+        return survivorFood;
     }
 
     public int getLastCombatTick() {
@@ -199,11 +220,71 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         this.entityData.set(SKIN_UUID, uuid != null ? uuid.toString() : "");
     }
 
+    public Optional<UUID> getRecruitOwnerUuid() {
+        String raw = this.entityData.get(RECRUIT_OWNER_UUID);
+        if (raw.isBlank()) return Optional.empty();
+        try {
+            return Optional.of(UUID.fromString(raw));
+        } catch (Exception ignored) {
+            return Optional.empty();
+        }
+    }
+
+    public boolean isRecruited() {
+        return getRecruitOwnerUuid().isPresent();
+    }
+
+    public boolean isRecruitOwner(Player player) {
+        return player != null && getRecruitOwnerUuid().map(player.getUUID()::equals).orElse(false);
+    }
+
+    public boolean recruit(ServerPlayer player) {
+        if (this.level().isClientSide || player == null || !this.isAlive() || this.isBaby()) return false;
+
+        Optional<UUID> currentOwner = getRecruitOwnerUuid();
+        if (currentOwner.isPresent()) {
+            player.displayClientMessage(Component.translatable(
+                    currentOwner.get().equals(player.getUUID())
+                            ? "message.echoes_of_survival.recruit.already_yours"
+                            : "message.echoes_of_survival.recruit.already_recruited"
+            ), true);
+            return false;
+        }
+
+        int reputation = ReputationApi.get(player);
+        if (!ReputationTiers.canRecruit(reputation)) {
+            player.displayClientMessage(Component.translatable("message.echoes_of_survival.recruit.locked"), true);
+            return false;
+        }
+
+        this.entityData.set(RECRUIT_OWNER_UUID, player.getUUID().toString());
+        this.getNavigation().stop();
+        this.setTarget(null);
+        player.displayClientMessage(Component.translatable("message.echoes_of_survival.recruit.success", this.getDisplayName()), true);
+        return true;
+    }
+
+    public boolean dismissRecruitOwner(ServerPlayer player) {
+        if (this.level().isClientSide || player == null || !this.isAlive() || this.isBaby()) return false;
+        if (!isRecruitOwner(player)) {
+            player.displayClientMessage(Component.translatable("message.echoes_of_survival.recruit.not_yours"), true);
+            return false;
+        }
+
+        this.entityData.set(RECRUIT_OWNER_UUID, "");
+        this.getNavigation().stop();
+        this.setTarget(null);
+        player.displayClientMessage(Component.translatable("message.echoes_of_survival.recruit.dismissed", this.getDisplayName()), true);
+        return true;
+    }
+
     @Override
     public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
         getProfessionId().ifPresent(id -> tag.putString(NBT_PROFESSION_ID, id.toString()));
         getSkinUuid().ifPresent(uuid -> tag.putString(NBT_SKIN_UUID, uuid.toString()));
+        getRecruitOwnerUuid().ifPresent(uuid -> tag.putString(NBT_RECRUIT_OWNER_UUID, uuid.toString()));
+        this.survivorFood.addAdditionalSaveData(tag);
     }
 
     @Override
@@ -221,6 +302,14 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
             } catch (Exception ignored) {
             }
         }
+        if (tag.contains(NBT_RECRUIT_OWNER_UUID)) {
+            try {
+                this.entityData.set(RECRUIT_OWNER_UUID, UUID.fromString(tag.getString(NBT_RECRUIT_OWNER_UUID)).toString());
+            } catch (Exception ignored) {
+                this.entityData.set(RECRUIT_OWNER_UUID, "");
+            }
+        }
+        this.survivorFood.readAdditionalSaveData(tag);
     }
 
     @Override
@@ -238,7 +327,6 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         if (this.level().isClientSide) return;
 
         ensureProfessionAssigned();
-        applyInitialEquipmentIfNeeded();
 
         Player tradingPlayer = getTradingPlayer();
         int reputation = tradingPlayer instanceof ServerPlayer sp ? ReputationApi.get(sp) : 0;
@@ -308,43 +396,87 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
 
     @Override
     public InteractionResult mobInteract(Player player, InteractionHand hand) {
-        if (player.isShiftKeyDown()) {
-            if (!this.level().isClientSide && player instanceof ServerPlayer sp) {
-                SurvivorQuestMenu.open(sp, this);
-            }
-            return InteractionResult.sidedSuccess(this.level().isClientSide);
-        }
-
         ItemStack itemstack = player.getItemInHand(hand);
         if (!itemstack.is(Items.VILLAGER_SPAWN_EGG) && this.isAlive() && !this.isTrading() && !this.isBaby()) {
             if (hand == InteractionHand.MAIN_HAND) {
                 player.awardStat(Stats.TALKED_TO_VILLAGER);
             }
 
-            if (!this.level().isClientSide) {
-                this.getNavigation().stop();
-                this.setTarget(null);
-                if (this.isUsingItem()) {
-                    this.stopUsingItem();
-                }
-
-                this.setTradingPlayer(player);
-                this.offers = new MerchantOffers();
-                this.offerReputationGains.clear();
-                this.updateTrades();
-
-                if (this.getOffers().isEmpty()) {
-                    this.setTradingPlayer(null);
-                    return InteractionResult.CONSUME;
-                }
-
-                this.openTradingScreen(player, this.getDisplayName(), 1);
-            }
-
             return InteractionResult.sidedSuccess(this.level().isClientSide);
         }
 
         return super.mobInteract(player, hand);
+    }
+
+    public void beginMenuInteraction(ServerPlayer player) {
+        this.interactingPlayerId = player.getUUID();
+        this.interactionLockMode = InteractionLockMode.QUEST_MENU;
+        freezeForMenu();
+    }
+
+    public void beginOverlayInteraction(ServerPlayer player) {
+        this.interactingPlayerId = player.getUUID();
+        this.interactionLockMode = InteractionLockMode.OVERLAY;
+        if (!isInInteractionCombat()) {
+            freezeForMenu();
+        }
+    }
+
+    public void endMenuInteraction(Player player) {
+        if (player != null && player.getUUID().equals(this.interactingPlayerId)) {
+            this.interactingPlayerId = null;
+            this.interactionLockMode = InteractionLockMode.NONE;
+        }
+    }
+
+    public boolean openTradeInterface(ServerPlayer player) {
+        if (!this.isAlive() || this.isTrading() || this.isBaby()) return false;
+
+        this.getNavigation().stop();
+        this.setTarget(null);
+        if (this.isUsingItem()) {
+            this.stopUsingItem();
+        }
+
+        this.setTradingPlayer(player);
+        this.offers = new MerchantOffers();
+        this.offerReputationGains.clear();
+        this.updateTrades();
+
+        if (this.getOffers().isEmpty()) {
+            if (isTradeUnavailableDueToReputation(player)) {
+                player.displayClientMessage(Component.translatable("message.echoes_of_survival.trade.locked"), true);
+            }
+            this.setTradingPlayer(null);
+            return false;
+        }
+
+        this.openTradingScreen(player, this.getDisplayName(), 1);
+        return true;
+    }
+
+    private boolean isTradeUnavailableDueToReputation(ServerPlayer player) {
+        int reputation = ReputationApi.get(player);
+        if (!ReputationTiers.canTradeFriendly(reputation)) return true;
+
+        ResourceLocation professionId = getProfessionId().orElse(null);
+        if (professionId == null) return false;
+
+        ProfessionDefinition profession = EosDatapackIndex.profession(professionId).orElse(null);
+        if (profession == null) return false;
+
+        boolean hasLockedTrade = false;
+        List<TradePoolDefinition> pools = EosDatapackIndex.tradePools(professionId, profession.logic().tradePools());
+        for (TradePoolDefinition pool : pools) {
+            if (pool == null || pool.trades() == null) continue;
+            for (TradePoolDefinition.Trade trade : pool.trades()) {
+                if (trade == null || trade.buy() == null || trade.sell() == null) continue;
+                if (trade.buy().toStack().isEmpty() || trade.sell().toStack().isEmpty()) continue;
+                if (isTradeUnlocked(trade, reputation)) return false;
+                hasLockedTrade = true;
+            }
+        }
+        return hasLockedTrade;
     }
 
     @Override
@@ -406,44 +538,6 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         }
     }
 
-    private boolean initialEquipmentApplied = false;
-
-    private void applyInitialEquipmentIfNeeded() {
-        if (this.level().isClientSide) return;
-        if (initialEquipmentApplied) return;
-        initialEquipmentApplied = true;
-
-        Optional<ResourceLocation> profId = getProfessionId();
-        if (profId.isEmpty()) return;
-
-        ProfessionDefinition profession = EosDatapackIndex.profession(profId.get()).orElse(null);
-        if (profession == null) return;
-
-        ensureSkinAssigned(profession);
-
-        profession.initialEquipment().armorSet().ifPresent(armorSetId -> {
-            ArmorSetDefinition def = EosDatapackIndex.armorSet(armorSetId).orElse(null);
-            if (def == null || def.set() == null || def.set().isEmpty()) return;
-
-            List<ArmorSetDefinition.ArmorSet> variants = new ArrayList<>(def.set().values());
-            ArmorSetDefinition.ArmorSet chosen = variants.get(this.random.nextInt(variants.size()));
-            for (var entry : chosen.slots().entrySet()) {
-                equipIfPresent(entry.getKey(), Optional.of(entry.getValue()));
-            }
-        });
-
-        for (ItemStack stack : profession.initialEquipment().tacticalItems()) {
-            if (stack == null || stack.isEmpty()) continue;
-            ItemStack copy = stack.copy();
-            for (int i = 0; i < tacticalInventory.getSlots(); i++) {
-                if (tacticalInventory.getStackInSlot(i).isEmpty()) {
-                    tacticalInventory.setStackInSlot(i, copy);
-                    break;
-                }
-            }
-        }
-    }
-
     private void ensureSkinAssigned(ProfessionDefinition profession) {
         if (this.level().isClientSide) return;
         if (getSkinUuid().isPresent()) return;
@@ -458,10 +552,6 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         int idx = Math.floorMod(this.getUUID().hashCode(), pool.size());
         UUID picked = pool.get(idx);
         if (picked != null) setSkinUuid(picked);
-    }
-
-    private void equipIfPresent(EquipmentSlot slot, Optional<ResourceLocation> itemId) {
-        itemId.flatMap(BuiltInRegistries.ITEM::getOptional).ifPresent(item -> this.setItemSlot(slot, new ItemStack(item)));
     }
 
     @Override
@@ -515,5 +605,73 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
             return Items.ARROW.getDefaultInstance();
         }
         return super.getProjectile(weaponStack);
+    }
+
+    @Override
+    public void aiStep() {
+        super.aiStep();
+        if (!this.level().isClientSide && this.survivorFood.getExhaustionLevel() > 4.0F) {
+            this.survivorFood.setExhaustion(this.survivorFood.getExhaustionLevel() - 4.0F);
+        }
+        if (this.level().isClientSide || this.interactingPlayerId == null) return;
+
+        if (!(this.level() instanceof ServerLevel serverLevel)) {
+            this.interactingPlayerId = null;
+            return;
+        }
+
+        Player player = serverLevel.getPlayerByUUID(this.interactingPlayerId);
+        if (!(player instanceof ServerPlayer serverPlayer)) {
+            this.interactingPlayerId = null;
+            this.interactionLockMode = InteractionLockMode.NONE;
+            return;
+        }
+
+        if (this.interactionLockMode == InteractionLockMode.OVERLAY) {
+            if (serverPlayer.distanceToSqr(this) > 64.0) {
+                this.interactingPlayerId = null;
+                this.interactionLockMode = InteractionLockMode.NONE;
+                return;
+            }
+            if (isInInteractionCombat()) {
+                return;
+            }
+            freezeForMenu();
+            return;
+        }
+
+        if (!(serverPlayer.containerMenu instanceof SurvivorQuestMenu)) {
+            this.interactingPlayerId = null;
+            this.interactionLockMode = InteractionLockMode.NONE;
+            return;
+        }
+
+        freezeForMenu();
+    }
+
+    private void freezeForMenu() {
+        this.getNavigation().stop();
+        this.setTarget(null);
+        this.setDeltaMovement(Vec3.ZERO);
+        this.xxa = 0.0F;
+        this.yya = 0.0F;
+        this.zza = 0.0F;
+        if (this.isUsingItem()) {
+            this.stopUsingItem();
+        }
+    }
+
+    private boolean isInInteractionCombat() {
+        LivingEntity target = this.getTarget();
+        if (target != null && target.isAlive()) {
+            return true;
+        }
+        return this.tickCount - this.lastCombatTick <= INTERACTION_COMBAT_GRACE_TICKS;
+    }
+
+    private enum InteractionLockMode {
+        NONE,
+        OVERLAY,
+        QUEST_MENU
     }
 }

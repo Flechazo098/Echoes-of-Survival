@@ -24,7 +24,9 @@ public record QuestDefinition(
         ResourceLocation type,
         Optional<Either<Integer, String>> requireReputation,
         List<Objective> objectives,
-        Rewards rewards
+        Rewards rewards,
+        boolean repeatable,
+        int maxRepeats
 ) {
     public static final Codec<QuestDefinition> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             ResourceLocation.CODEC.fieldOf("quest_id").forGetter(QuestDefinition::questId),
@@ -33,7 +35,9 @@ public record QuestDefinition(
             ResourceLocation.CODEC.fieldOf("type").forGetter(QuestDefinition::type),
             Codec.either(Codec.INT, Codec.STRING).optionalFieldOf("require_reputation").forGetter(QuestDefinition::requireReputation),
             Objective.CODEC.listOf().fieldOf("objectives").forGetter(QuestDefinition::objectives),
-            Rewards.CODEC.fieldOf("rewards").forGetter(QuestDefinition::rewards)
+            Rewards.CODEC.fieldOf("rewards").forGetter(QuestDefinition::rewards),
+            Codec.BOOL.optionalFieldOf("repeatable", false).forGetter(QuestDefinition::repeatable),
+            Codec.INT.optionalFieldOf("max_repeats", 0).forGetter(QuestDefinition::maxRepeats)
     ).apply(instance, QuestDefinition::new));
 
     public static final ResourceLocation TYPE_SUBMIT_ITEMS = ResourceLocation.fromNamespaceAndPath("echoes", "submit_items");

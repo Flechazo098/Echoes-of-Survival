@@ -51,7 +51,7 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
     protected boolean chargingCrossbow = false;
     protected int lastCombatTick = -100000;
 
-    public final ItemStackHandler tacticalInventory = new ItemStackHandler(9);
+    public final ItemStackHandler tacticalInventory = new ItemStackHandler(10);
 
     protected AbstractSurvivorEntity(EntityType<? extends WanderingTrader> type, Level level) {
         super(type, level);
@@ -106,12 +106,24 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
 
     @Override
     public Component getDisplayName() {
-        var name = super.getDisplayName();
-        var prof = getProfessionId();
-        if (prof.isPresent()) {
-            return name.copy().append(Component.literal(" (" + prof.get().getPath() + ")"));
+        Component name = super.getDisplayName();
+        Optional<ResourceLocation> professionId = getProfessionId();
+        if (professionId.isEmpty()) {
+            return name;
         }
-        return name;
+        return Component.translatableWithFallback(
+                "entity.echoes_of_survival.survivor.with_profession",
+                "%s (%s)",
+                name,
+                professionName(professionId.get())
+        );
+    }
+
+    protected Component professionName(ResourceLocation professionId) {
+        return Component.translatableWithFallback(
+                "profession." + professionId.getNamespace() + "." + professionId.getPath(),
+                professionId.getPath()
+        );
     }
 
     protected void assignRandomProfession() {
@@ -184,6 +196,9 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
         }
         if (tag.contains(NBT_TACTICAL, Tag.TAG_COMPOUND)) {
             tacticalInventory.deserializeNBT(this.registryAccess(), tag.getCompound(NBT_TACTICAL));
+            if (tacticalInventory.getSlots() < 10) {
+                tacticalInventory.setSize(10);
+            }
         }
     }
 

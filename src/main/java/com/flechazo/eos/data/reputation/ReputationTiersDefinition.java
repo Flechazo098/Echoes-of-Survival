@@ -15,7 +15,7 @@ import java.util.Map;
 )
 public record ReputationTiersDefinition(Map<ResourceLocation, Map<String, Tier>> values) {
     public static final Codec<ReputationTiersDefinition> CODEC = RecordCodecBuilder.create(
-            (RecordCodecBuilder.Instance<ReputationTiersDefinition> instance) -> instance.group(
+            instance -> instance.group(
                     Codec.unboundedMap(
                                     ResourceLocation.CODEC,
                                     Codec.unboundedMap(Codec.STRING, Tier.CODEC)
