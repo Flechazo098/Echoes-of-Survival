@@ -25,6 +25,8 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ServerLevelAccessor;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.EnumSet;
+
 public class NeutralSurvivorEntity extends AbstractSurvivorEntity {
 
     private static final EntityDataAccessor<Boolean> DATA_ANGRY =
@@ -75,10 +77,12 @@ public class NeutralSurvivorEntity extends AbstractSurvivorEntity {
         this.goalSelector.addGoal(4, new OpenDoorGoal(this, true));
         this.goalSelector.addGoal(4, new OpenFenceGoal(this, true));
         this.goalSelector.addGoal(4, new SurvivorUsePotionGoal(this, () -> this.tacticalInventory));
-        this.goalSelector.addGoal(6, new NeutralAttackGoal(this, 1.20, false));
-        this.goalSelector.addGoal(7, new RandomStrollGoal(this, 0.9));
-        this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 10.0F));
-        this.goalSelector.addGoal(9, new RandomLookAroundGoal(this));
+        this.goalSelector.addGoal(5, new SurvivorWeaponSwitchGoal(this, 6.0));
+        this.goalSelector.addGoal(6, new NeutralGunAttackGoal(this));
+        this.goalSelector.addGoal(7, new NeutralAttackGoal(this, 1.20, false));
+        this.goalSelector.addGoal(8, new RandomStrollGoal(this, 0.9));
+        this.goalSelector.addGoal(9, new LookAtPlayerGoal(this, Player.class, 10.0F));
+        this.goalSelector.addGoal(10, new RandomLookAroundGoal(this));
 
         this.targetSelector.addGoal(1, new HurtByTargetGoal(this));
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(
@@ -232,6 +236,47 @@ public class NeutralSurvivorEntity extends AbstractSurvivorEntity {
         @Override
         public boolean canContinueToUse() {
             return neutral.isAngry() && !neutral.isBegging() && super.canContinueToUse();
+        }
+    }
+
+    private static class NeutralGunAttackGoal extends Goal {
+        private final NeutralSurvivorEntity neutral;
+        private final SurvivorGunAttackGoal wrapped;
+
+        private NeutralGunAttackGoal(NeutralSurvivorEntity neutral) {
+            this.neutral = neutral;
+            this.wrapped = new SurvivorGunAttackGoal(neutral);
+            this.setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK));
+        }
+
+        @Override
+        public boolean canUse() {
+            return neutral.isAngry() && !neutral.isBegging() && wrapped.canUse();
+        }
+
+        @Override
+        public boolean canContinueToUse() {
+            return neutral.isAngry() && !neutral.isBegging() && wrapped.canContinueToUse();
+        }
+
+        @Override
+        public void start() {
+            wrapped.start();
+        }
+
+        @Override
+        public void stop() {
+            wrapped.stop();
+        }
+
+        @Override
+        public boolean requiresUpdateEveryTick() {
+            return true;
+        }
+
+        @Override
+        public void tick() {
+            wrapped.tick();
         }
     }
 }

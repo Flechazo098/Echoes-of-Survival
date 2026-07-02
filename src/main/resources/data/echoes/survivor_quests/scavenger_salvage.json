@@ -11,9 +11,8 @@
   ],
   "rewards": {
     "items": [
-      { "item": "minecraft:bread", "count": 6 }
+      { "id": "minecraft:bread", "count": 6 }
     ],
     "reputation": 8
   }
 }
-

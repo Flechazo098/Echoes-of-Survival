@@ -55,6 +55,7 @@ public class FollowRecruitOwnerGoal extends Goal {
 
     @Override
     public boolean canUse() {
+        if (this.survivor.getPatrolMode() != FriendlySurvivorEntity.PatrolMode.FOLLOW) return false;
         if (this.survivor.level().isClientSide) return false;
         if (this.combatLockTicks > 0) {
             this.combatLockTicks--;

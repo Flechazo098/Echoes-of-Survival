@@ -2,12 +2,12 @@ package com.flechazo.eos.data.quest;
 
 import cc.sighs.oelib.data.api.DataDriven;
 import cc.sighs.oelib.data.api.DataValidator;
-import com.flechazo.eos.data.common.ItemStackDef;
 import com.flechazo.eos.data.common.TextKey;
 import com.mojang.datafixers.util.Either;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.List;
 import java.util.Optional;
@@ -58,11 +58,11 @@ public record QuestDefinition(
     }
 
     public record Rewards(
-            List<ItemStackDef> items,
+            List<ItemStack> items,
             int reputation
     ) {
         public static final Codec<Rewards> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-                ItemStackDef.CODEC.listOf().optionalFieldOf("items", List.of()).forGetter(Rewards::items),
+                ItemStack.CODEC.listOf().optionalFieldOf("items", List.of()).forGetter(Rewards::items),
                 Codec.INT.optionalFieldOf("reputation", 0).forGetter(Rewards::reputation)
         ).apply(instance, Rewards::new));
     }

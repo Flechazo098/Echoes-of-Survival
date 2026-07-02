@@ -1,5 +1,6 @@
 package com.flechazo.eos.entity.ai;
 
+import com.atsuishio.superbwarfare.item.gun.GunItem;
 import net.minecraft.world.item.*;
 
 public final class SurvivorItemUtil {
@@ -10,7 +11,8 @@ public final class SurvivorItemUtil {
         if (stack == null || stack.isEmpty()) return false;
         return stack.getItem() instanceof BowItem
                 || stack.getItem() instanceof CrossbowItem
-                || stack.getItem() instanceof TridentItem;
+                || stack.getItem() instanceof TridentItem
+                || stack.getItem() instanceof GunItem;
     }
 
     public static boolean isMeleeWeapon(ItemStack stack) {

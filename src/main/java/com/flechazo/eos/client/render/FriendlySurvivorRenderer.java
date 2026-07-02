@@ -17,6 +17,13 @@ public class FriendlySurvivorRenderer extends SurvivorPlayerRenderer<FriendlySur
 
     @Override
     protected SurvivorPlayerSkin skin(FriendlySurvivorEntity entity) {
+        SurvivorPlayerSkin mojang = entity.getSkinUuid()
+                .flatMap(MojangSkinCache::getOrRequest)
+                .orElse(null);
+        if (mojang != null) {
+            return mojang;
+        }
+
         SurvivorPlayerSkin forced = entity.getProfessionId()
                 .flatMap(EosDatapackIndex::profession)
                 .flatMap(ProfessionDefinition::skin)
@@ -24,13 +31,6 @@ public class FriendlySurvivorRenderer extends SurvivorPlayerRenderer<FriendlySur
                 .orElse(null);
         if (forced != null) {
             return forced;
-        }
-
-        SurvivorPlayerSkin mojang = entity.getSkinUuid()
-                .flatMap(MojangSkinCache::getOrRequest)
-                .orElse(null);
-        if (mojang != null) {
-            return mojang;
         }
 
         return SurvivorPlayerSkin.wide(SurvivorSkins.pick(entity.getUUID(), SurvivorSkins.PRESET_POOL, DEFAULT_TEXTURE));

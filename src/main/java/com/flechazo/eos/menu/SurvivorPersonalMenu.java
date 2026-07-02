@@ -71,11 +71,7 @@ public class SurvivorPersonalMenu extends AbstractContainerMenu {
     }
 
     private static int scaled(int value) {
-        return Math.round(value * 1.5F);
-    }
-
-    private static int scaled(float value) {
-        return Math.round(value * 1.5F);
+        return value;
     }
 
     private void addOwnSlots(Player player) {

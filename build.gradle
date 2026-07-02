@@ -117,6 +117,10 @@ dependencies {
     implementation "cc.sighs.oelib:OELib-neoforge-1.21.1:0.2.3"
     implementation "curse.maven:sodium-394468:8143565"
     implementation "curse.maven:nbt-938890:6307058"
+    implementation "curse.maven:superb-warfare-1218165:8104860"
+    implementation "curse.maven:curios-309927:6529130"
+    implementation "curse.maven:geckolib-388172:8350073"
+    implementation "curse.maven:kotlin-for-forge-351264:8335665"
 //    compileOnly "mezz.jei:jei-$rootProject.minecraft_version-neoforge-api:$rootProject.jei_version"
 //    runtimeOnly ("mezz.jei:jei-$rootProject.minecraft_version-neoforge:$rootProject.jei_version") { transitive = false }
 //    implementation 'com.sighs:ApricityUI-neoforge-1.21.1:1.1.2'

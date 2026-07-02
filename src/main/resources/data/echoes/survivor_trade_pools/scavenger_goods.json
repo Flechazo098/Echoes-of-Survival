@@ -2,22 +2,22 @@
   "profession": "echoes:scavenger",
   "trades": [
     {
-      "buy": { "item": "minecraft:emerald", "count": 1 },
-      "sell": { "item": "minecraft:arrow", "count": 16 },
+      "buy": { "id": "minecraft:emerald", "count": 1 },
+      "sell": { "id": "minecraft:arrow", "count": 16 },
       "reputation": 1,
       "max_uses": 16,
       "reputation_requirement": 0
     },
     {
-      "buy": { "item": "minecraft:emerald", "count": 2 },
-      "sell": { "item": "minecraft:iron_ingot", "count": 3 },
+      "buy": { "id": "minecraft:emerald", "count": 2 },
+      "sell": { "id": "minecraft:iron_ingot", "count": 3 },
       "reputation": 1,
       "max_uses": 12,
       "reputation_requirement": 0
     },
     {
-      "buy": { "item": "minecraft:emerald", "count": 6 },
-      "sell": { "item": "minecraft:shield", "count": 1 },
+      "buy": { "id": "minecraft:emerald", "count": 6 },
+      "sell": { "id": "minecraft:shield", "count": 1 },
       "reputation": 2,
       "max_uses": 4,
       "reputation_requirement": 101,
@@ -25,4 +25,3 @@
     }
   ]
 }
-

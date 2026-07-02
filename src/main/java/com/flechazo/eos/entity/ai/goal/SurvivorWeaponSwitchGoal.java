@@ -56,8 +56,6 @@ public class SurvivorWeaponSwitchGoal extends Goal {
 
         double dist = mob.distanceToSqr(target);
 
-        // Update mode with hysteresis: once we decide melee/ranged, we don't immediately flip back
-        // unless the target crosses the opposite threshold.
         if (!preferMeleeMode && dist <= meleeDistanceSqr) {
             preferMeleeMode = true;
         } else if (preferMeleeMode && dist >= rangedDistanceSqr) {

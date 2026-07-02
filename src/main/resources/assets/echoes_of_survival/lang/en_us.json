@@ -55,5 +55,15 @@
   "profession.echoes.scavenger": "Scavenger",
   "entity.echoes_of_survival.neutral_survivor.warn": "Back off, stranger!",
   "entity.echoes_of_survival.neutral_survivor.hostile": "You asked for it!",
-  "entity.echoes_of_survival.neutral_survivor.beg": "Please... got any food..."
+  "entity.echoes_of_survival.neutral_survivor.beg": "Please... got any food...",
+  "message.echoes_of_survival.mode.not_recruited": "You must recruit this survivor first",
+  "message.echoes_of_survival.mode.patrol": "Patrol mode: %s",
+  "message.echoes_of_survival.mode.attack": "Attack mode: %s",
+  "gui.echoes_of_survival.mode.patrol.wander": "Wander",
+  "gui.echoes_of_survival.mode.patrol.follow": "Follow",
+  "gui.echoes_of_survival.mode.patrol.guard": "Guard",
+  "gui.echoes_of_survival.mode.attack.passive": "Passive",
+  "gui.echoes_of_survival.mode.attack.neutral": "Neutral",
+  "gui.echoes_of_survival.mode.attack.aggressive": "Aggressive",
+  "gui.echoes_of_survival.mode.attack.raid": "Raid"
 }

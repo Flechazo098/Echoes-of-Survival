@@ -12,9 +12,8 @@
   ],
   "rewards": {
     "items": [
-      { "item": "minecraft:anvil", "count": 1 }
+      { "id": "minecraft:anvil", "count": 1 }
     ],
     "reputation": 25
   }
 }
-

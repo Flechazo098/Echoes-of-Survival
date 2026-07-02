@@ -8,6 +8,7 @@ import com.flechazo.eos.EchoesofSurvival;
 import com.flechazo.eos.client.screen.SurvivorQuestScreen;
 import com.flechazo.eos.entity.FriendlySurvivorEntity;
 import com.flechazo.eos.menu.SurvivorQuestMenu;
+import com.flechazo.eos.reputation.ReputationApi;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -27,19 +28,6 @@ public record SurvivorQuestStatePayload(
         List<QuestEntryData> entries
 ) implements INetworkPacket<SurvivorQuestStatePayload> {
 
-    public static SurvivorQuestStatePayload create(ServerPlayer player, FriendlySurvivorEntity survivor) {
-        List<ResourceLocation> questIds = SurvivorQuestMenu.currentQuestIdsFor(player, survivor);
-        List<QuestEntryData> entries = SurvivorQuestMenu.currentQuestEntriesFor(player, questIds).stream()
-                .map(entry -> new QuestEntryData(
-                        entry.questId(),
-                        entry.objectiveProgress(),
-                        entry.completed(),
-                        entry.claimed(),
-                        entry.maxReached()
-                ))
-                .toList();
-        return new SurvivorQuestStatePayload(survivor.getId(), com.flechazo.eos.reputation.ReputationApi.get(player), questIds, entries);
-    }
 
     @Override
     public void handle(INetworkContext context) {
@@ -64,6 +52,20 @@ public record SurvivorQuestStatePayload(
                 screen.onQuestStateUpdated();
             }
         });
+    }
+
+    public static SurvivorQuestStatePayload create(ServerPlayer player, FriendlySurvivorEntity survivor) {
+        List<ResourceLocation> questIds = SurvivorQuestMenu.currentQuestIdsFor(player, survivor);
+        List<QuestEntryData> entries = SurvivorQuestMenu.currentQuestEntriesFor(player, questIds).stream()
+                .map(entry -> new QuestEntryData(
+                        entry.questId(),
+                        entry.objectiveProgress(),
+                        entry.completed(),
+                        entry.claimed(),
+                        entry.maxReached()
+                ))
+                .toList();
+        return new SurvivorQuestStatePayload(survivor.getId(), ReputationApi.get(player), questIds, entries);
     }
 
     public record QuestEntryData(

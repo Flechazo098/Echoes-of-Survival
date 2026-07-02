@@ -2,7 +2,6 @@ package com.flechazo.eos.client.screen;
 
 import com.flechazo.eos.EchoesofSurvival;
 import com.flechazo.eos.data.EosDatapackIndex;
-import com.flechazo.eos.data.common.ItemStackDef;
 import com.flechazo.eos.data.common.TextKey;
 import com.flechazo.eos.data.quest.QuestDefinition;
 import com.flechazo.eos.data.reputation.ReputationTiersDefinition;
@@ -318,7 +317,7 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
         int rewardX = x + scaled(4);
         int rewardY = y;
         for (int i = 0; i < quest.rewards().items().size(); i++) {
-            ItemStackDef reward = quest.rewards().items().get(i);
+            ItemStack reward = quest.rewards().items().get(i);
             renderRewardIcon(graphics, reward, rewardX + i * 20, rewardY);
             if (i >= 1) break;
         }
@@ -391,12 +390,11 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
         return Component.literal(this.font.plainSubstrByWidth(component.getString(), Math.max(0, width - this.font.width("..."))) + "...");
     }
 
-    private void renderRewardIcon(GuiGraphics graphics, ItemStackDef reward, int x, int y) {
-        Optional<Item> item = BuiltInRegistries.ITEM.getOptional(reward.item());
-        if (item.isEmpty()) {
+    private void renderRewardIcon(GuiGraphics graphics, ItemStack reward, int x, int y) {
+        if (reward == null || reward.isEmpty()) {
             return;
         }
-        ItemStack stack = new ItemStack(item.get(), Math.max(1, reward.count()));
+        ItemStack stack = reward.copy();
         graphics.blitSprite(SLOT, x - 1, y - 1, 18, 18);
         graphics.renderItem(stack, x, y);
         graphics.renderItemDecorations(this.font, stack, x, y);

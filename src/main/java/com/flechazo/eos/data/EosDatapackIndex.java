@@ -36,7 +36,8 @@ public final class EosDatapackIndex {
     private static volatile Map<String, ReputationTiersDefinition.Tier> reputationTierByName = Map.of();
     private static volatile List<Map.Entry<String, ReputationTiersDefinition.Tier>> reputationTiers = List.of();
     private static volatile Map<String, ReputationEventsDefinition.ReputationEvent> reputationEventById = Map.of();
-    private static volatile List<UUID> skinLibraryUuids = List.of();
+    private static volatile List<SkinProfile> skinLibraryProfiles = List.of();
+    private static volatile Map<UUID, String> skinLibraryUsernamesByUuid = Map.of();
     private static volatile List<String> healingPotionPatterns = List.of();
 
     @SubscribeEvent
@@ -128,14 +129,23 @@ public final class EosDatapackIndex {
     }
 
     private static void rebuildSkinLibrary() {
-        List<UUID> list = new ArrayList<>();
+        Map<UUID, String> byUuid = new HashMap<>();
         for (SkinLibraryDefinition def : DataManager.getDataList(SkinLibraryDefinition.class)) {
-            if (def == null || def.uuids() == null) continue;
-            for (UUID uuid : def.uuids()) {
-                if (uuid != null) list.add(uuid);
+            if (def == null || def.skins() == null) continue;
+            for (Map.Entry<UUID, String> entry : def.skins().entrySet()) {
+                UUID uuid = entry.getKey();
+                String username = entry.getValue();
+                if (uuid != null && username != null && !username.isBlank()) {
+                    byUuid.put(uuid, username.trim());
+                }
             }
         }
-        skinLibraryUuids = List.copyOf(list);
+        List<SkinProfile> profiles = byUuid.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> new SkinProfile(entry.getKey(), entry.getValue()))
+                .toList();
+        skinLibraryUsernamesByUuid = Map.copyOf(byUuid);
+        skinLibraryProfiles = List.copyOf(profiles);
     }
 
     private static void rebuildHealingPotions() {
@@ -252,6 +262,24 @@ public final class EosDatapackIndex {
     }
 
     public static List<UUID> skinLibraryUuids() {
-        return skinLibraryUuids;
+        return skinLibraryProfiles.stream().map(SkinProfile::uuid).toList();
+    }
+
+    public static List<SkinProfile> skinLibraryProfiles() {
+        return skinLibraryProfiles;
+    }
+
+    public static Optional<SkinProfile> pickSkinProfile(UUID seed) {
+        if (seed == null || skinLibraryProfiles.isEmpty()) return Optional.empty();
+        int idx = Math.floorMod(seed.hashCode(), skinLibraryProfiles.size());
+        return Optional.of(skinLibraryProfiles.get(idx));
+    }
+
+    public static Optional<String> skinLibraryUsername(UUID uuid) {
+        if (uuid == null) return Optional.empty();
+        return Optional.ofNullable(skinLibraryUsernamesByUuid.get(uuid));
+    }
+
+    public record SkinProfile(UUID uuid, String username) {
     }
 }

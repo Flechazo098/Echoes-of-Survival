@@ -4,6 +4,10 @@
     "armor_set": "echoes:scavenger_tier_1",
     "tactical_items": [
       {
+        "id": "superbwarfare:hunting_rifle",
+        "components": {}
+      },
+      {
         "id": "minecraft:splash_potion",
         "components": {
           "minecraft:potion_contents": {

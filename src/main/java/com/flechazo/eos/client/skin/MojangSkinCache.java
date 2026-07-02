@@ -75,7 +75,7 @@ public final class MojangSkinCache {
 
     private static CompletableFuture<Void> fetchFromMojang(UUID uuid, Path cacheFile) {
         String id = uuid.toString().replace("-", "");
-        String profileUrl = "https://sessionserver.mojang.com/session/minecraft/profile/" + id + "?unsigned=false";
+        String profileUrl = "https://sessionserver.mojang.com/session/minecraft/profile/" + id;
 
         HttpRequest request = HttpRequest.newBuilder(URI.create(profileUrl))
                 .timeout(Duration.ofSeconds(12))

@@ -1,7 +1,6 @@
 package com.flechazo.eos.quest;
 
 import com.flechazo.eos.data.EosDatapackIndex;
-import com.flechazo.eos.data.common.ItemStackDef;
 import com.flechazo.eos.data.quest.QuestDefinition;
 import com.flechazo.eos.data.reputation.ReputationTiersDefinition;
 import com.flechazo.eos.reputation.EosAttachments;
@@ -67,8 +66,8 @@ public final class QuestApi {
         PlayerQuestState.QuestProgress progress = state.active().get(questId);
         if (progress == null || !progress.completed() || progress.claimed()) return false;
 
-        for (ItemStackDef itemDef : def.rewards().items()) {
-            ItemStack stack = itemDef.toStack();
+        for (ItemStack reward : def.rewards().items()) {
+            ItemStack stack = reward.copy();
             if (stack.isEmpty()) continue;
             if (!player.getInventory().add(stack)) {
                 player.drop(stack, false);

@@ -27,7 +27,7 @@ public class SurvivorPersonalScreen extends AbstractContainerScreen<SurvivorPers
     private static final int BASE_SCREEN_HEIGHT = 166;
     private static final int TEXTURE_WIDTH = 512;
     private static final int TEXTURE_HEIGHT = 256;
-    private static final float SCREEN_SCALE = 1.5F;
+    private static final float SCREEN_SCALE = 1.0F;
     private static final int SCREEN_WIDTH = scaled(BASE_SCREEN_WIDTH);
     private static final int SCREEN_HEIGHT = scaled(BASE_SCREEN_HEIGHT);
     private static final ResourceLocation SCREEN_TEXTURE = ResourceLocation.fromNamespaceAndPath(
@@ -50,10 +50,28 @@ public class SurvivorPersonalScreen extends AbstractContainerScreen<SurvivorPers
             EchoesofSurvival.MODID,
             "textures/gui/dismiss_icon.png"
     );
+    private static final ResourceLocation PATROL_ICON = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "textures/gui/patrol_icon.png");
+    private static final ResourceLocation FOLLOW_ICON = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "textures/gui/follow_icon.png");
+    private static final ResourceLocation GUARD_ICON = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "textures/gui/guard_icon.png");
+    private static final ResourceLocation PASSIVE_ICON = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "textures/gui/passive_icon.png");
+    private static final ResourceLocation NEUTRAL_ICON = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "textures/gui/neutral_icon.png");
+    private static final ResourceLocation AGGRESSIVE_ICON = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "textures/gui/aggressive_icon.png");
+    private static final ResourceLocation RAID_ICON = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "textures/gui/raid_icon.png");
     private static final int ENTITY_X1 = 32;
     private static final int ENTITY_Y1 = 36;
     private static final int ENTITY_X2 = 82;
     private static final int ENTITY_Y2 = 108;
+
+    private void renderOverlayIcon(GuiGraphics g, int wx, int wy, int ww, int wh, ResourceLocation tex) {
+        int iconPx = scaled(16);
+        int cx = wx + (ww - iconPx) / 2;
+        int cy = wy + (wh - iconPx) / 2;
+        g.pose().pushPose();
+        g.pose().translate(cx, cy, 0);
+        g.pose().scale((float) iconPx / 16, (float) iconPx / 16, 1.0F);
+        g.blit(tex, 0, 0, 0, 0, 16, 16, 16, 16);
+        g.pose().popPose();
+    }
 
     private float xMouse;
     private float yMouse;
@@ -75,16 +93,99 @@ public class SurvivorPersonalScreen extends AbstractContainerScreen<SurvivorPers
         this.topPos = (this.height - SCREEN_HEIGHT) / 2;
         this.inventoryLabelY = this.imageHeight + 10;
 
+        int recruitId = this.menu.survivorEntityId();
         int bw = scaled(49);
         int bh = scaled(16);
         int gap = scaled(3);
         int bx = this.leftPos + scaled(119);
         int by = this.topPos + scaled(58);
-        addRenderableWidget(new TexturedButton(bx, by, bw, bh, Component.empty(), TAB_BUTTON, TAB_BUTTON_PRESSED, 49, 16, () -> {}));
-        addRenderableWidget(new TexturedButton(bx + bw + gap, by, bw, bh, Component.empty(), TAB_BUTTON, TAB_BUTTON_PRESSED, 49, 16, () -> {}));
-        int recruitId = this.menu.survivorEntityId();
         int iw = scaled(16);
         int ih = scaled(16);
+        addRenderableWidget(new TexturedButton(bx, by, bw, bh, Component.empty(), TAB_BUTTON, TAB_BUTTON_PRESSED, 49, 16, () -> {
+            new SurvivorInteractPayload(recruitId, SurvivorInteractPayload.ACTION_CYCLE_PATROL).sendToServer();
+        }) {
+            @Override
+            protected void renderWidget(GuiGraphics g, int mx, int my, float pt) {
+                ResourceLocation bg = (this.selected || this.isPressedDown) && this.active ? TAB_BUTTON_PRESSED : TAB_BUTTON;
+                float bs = (float) this.width / 49;
+                g.pose().pushPose();
+                g.pose().translate(this.getX(), this.getY(), 0);
+                g.pose().scale(bs, bs, 1.0F);
+                g.blit(bg, 0, 0, 0, 0, 49, 16, 49, 16);
+                g.pose().popPose();
+                var mc = SurvivorPersonalScreen.this.minecraft;
+                Entity e = mc != null && mc.level != null ? mc.level.getEntity(recruitId) : null;
+                Component label;
+                ResourceLocation tex;
+                if (e instanceof FriendlySurvivorEntity s && s.isRecruited()) {
+                    tex = switch (s.getPatrolMode()) {
+                        case FOLLOW -> FOLLOW_ICON;
+                        case GUARD -> GUARD_ICON;
+                        default -> PATROL_ICON;
+                    };
+                    label = Component.translatable("gui.echoes_of_survival.mode.patrol." + s.getPatrolMode().name().toLowerCase());
+                } else {
+                    tex = PATROL_ICON;
+                    label = Component.literal("-");
+                }
+                int textW = SurvivorPersonalScreen.this.font.width(label);
+                int contentW = iw + 2 + textW;
+                int iconX = this.getX() + (this.width - contentW) / 2 - 5;
+                int iconY = this.getY() + (this.height - ih) / 2;
+                float is = (float) iw / 16;
+                g.pose().pushPose();
+                g.pose().translate(iconX, iconY, 0);
+                g.pose().scale(is, is, 1.0F);
+                g.blit(tex, 0, 0, 0, 0, 16, 16, 16, 16);
+                g.pose().popPose();
+                int textX = iconX + iw + 2;
+                int textY = this.getY() + (this.height - 8) / 2;
+                g.drawString(SurvivorPersonalScreen.this.font, label, textX, textY, 0xFF404040, false);
+            }
+        });
+        addRenderableWidget(new TexturedButton(bx + bw + gap, by, bw, bh, Component.empty(), TAB_BUTTON, TAB_BUTTON_PRESSED, 49, 16, () -> {
+            new SurvivorInteractPayload(recruitId, SurvivorInteractPayload.ACTION_CYCLE_ATTACK).sendToServer();
+        }) {
+            @Override
+            protected void renderWidget(GuiGraphics g, int mx, int my, float pt) {
+                ResourceLocation bg = (this.selected || this.isPressedDown) && this.active ? TAB_BUTTON_PRESSED : TAB_BUTTON;
+                float bs = (float) this.width / 49;
+                g.pose().pushPose();
+                g.pose().translate(this.getX(), this.getY(), 0);
+                g.pose().scale(bs, bs, 1.0F);
+                g.blit(bg, 0, 0, 0, 0, 49, 16, 49, 16);
+                g.pose().popPose();
+                var mc = SurvivorPersonalScreen.this.minecraft;
+                Entity e = mc != null && mc.level != null ? mc.level.getEntity(recruitId) : null;
+                Component label;
+                ResourceLocation tex;
+                if (e instanceof FriendlySurvivorEntity s && s.isRecruited()) {
+                    tex = switch (s.getAttackMode()) {
+                        case NEUTRAL -> NEUTRAL_ICON;
+                        case AGGRESSIVE -> AGGRESSIVE_ICON;
+                        case RAID -> RAID_ICON;
+                        default -> PASSIVE_ICON;
+                    };
+                    label = Component.translatable("gui.echoes_of_survival.mode.attack." + s.getAttackMode().name().toLowerCase());
+                } else {
+                    tex = PASSIVE_ICON;
+                    label = Component.literal("-");
+                }
+                int textW = SurvivorPersonalScreen.this.font.width(label);
+                int contentW = iw + 2 + textW;
+                int iconX = this.getX() + (this.width - contentW) / 2 - 5;
+                int iconY = this.getY() + (this.height - ih) / 2;
+                float is = (float) iw / 16;
+                g.pose().pushPose();
+                g.pose().translate(iconX, iconY, 0);
+                g.pose().scale(is, is, 1.0F);
+                g.blit(tex, 0, 0, 0, 0, 16, 16, 16, 16);
+                g.pose().popPose();
+                int textX = iconX + iw + 2;
+                int textY = this.getY() + (this.height - 8) / 2;
+                g.drawString(SurvivorPersonalScreen.this.font, label, textX, textY, 0xFF404040, false);
+            }
+        });
         int thirdX = bx + 2 * (bw + gap);
         int thirdY = by;
         Runnable recruitAction = () -> new SurvivorInteractPayload(recruitId, SurvivorInteractPayload.ACTION_RECRUIT).sendToServer();
@@ -101,14 +202,20 @@ public class SurvivorPersonalScreen extends AbstractContainerScreen<SurvivorPers
                 var mc = SurvivorPersonalScreen.this.minecraft;
                 Entity e = mc != null && mc.level != null ? mc.level.getEntity(recruitId) : null;
                 boolean recruited = e instanceof FriendlySurvivorEntity s && s.isRecruited();
+                Component label = Component.translatable(recruited ? "gui.echoes_of_survival.interact.dismiss" : "gui.echoes_of_survival.interact.recruit");
+                int textW = SurvivorPersonalScreen.this.font.width(label);
+                int contentW = iw + 2 + textW;
+                int iconX = this.getX() + (this.width - contentW) / 2 - 5;
+                int iconY = this.getY() + (this.height - ih) / 2;
                 float is = (float) iw / 16;
-                int ix = this.getX() + (this.width - iw) / 2 - 24;
-                int iy = this.getY() + (this.height - ih) / 2;
                 g.pose().pushPose();
-                g.pose().translate(ix, iy, 0);
+                g.pose().translate(iconX, iconY, 0);
                 g.pose().scale(is, is, 1.0F);
                 g.blit(recruited ? DISMISS_ICON : RECRUIT_ICON, 0, 0, 0, 0, 16, 16, 16, 16);
                 g.pose().popPose();
+                int textX = iconX + iw + 2;
+                int textY = this.getY() + (this.height - 8) / 2;
+                g.drawString(SurvivorPersonalScreen.this.font, label, textX, textY, 0xFF404040, false);
             }
         });
     }
@@ -155,7 +262,7 @@ public class SurvivorPersonalScreen extends AbstractContainerScreen<SurvivorPers
                     this.topPos + scaled(ENTITY_Y1),
                     this.leftPos + scaled(ENTITY_X2),
                     this.topPos + scaled(ENTITY_Y2),
-                    36, 0.0625F, this.xMouse, this.yMouse, living
+                    30, 0.0625F, this.xMouse, this.yMouse, living
             );
         }
     }
@@ -220,7 +327,7 @@ public class SurvivorPersonalScreen extends AbstractContainerScreen<SurvivorPers
             if (full) {
                 graphics.blitSprite(Gui.HeartType.NORMAL.getSprite(false, false, false), px, y, 9, 9);
             } else if (half) {
-                graphics.blitSprite(Gui.HeartType.NORMAL.getSprite(false, false, true), px, y, 9, 9);
+                graphics.blitSprite(Gui.HeartType.NORMAL.getSprite(false, true, false), px, y, 9, 9);
             }
         }
 

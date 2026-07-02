@@ -2,11 +2,11 @@ package com.flechazo.eos.data.trade;
 
 import cc.sighs.oelib.data.api.DataDriven;
 import cc.sighs.oelib.data.api.DataValidator;
-import com.flechazo.eos.data.common.ItemStackDef;
 import com.mojang.datafixers.util.Either;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.List;
 import java.util.Optional;
@@ -26,16 +26,16 @@ public record TradePoolDefinition(
     ).apply(instance, TradePoolDefinition::new));
 
     public record Trade(
-            ItemStackDef buy,
-            ItemStackDef sell,
+            ItemStack buy,
+            ItemStack sell,
             int reputation,
             int maxUses,
             int reputationRequirement,
             Optional<Either<Integer, String>> unlockCondition
     ) {
         public static final Codec<Trade> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-                ItemStackDef.CODEC.fieldOf("buy").forGetter(Trade::buy),
-                ItemStackDef.CODEC.fieldOf("sell").forGetter(Trade::sell),
+                ItemStack.CODEC.fieldOf("buy").forGetter(Trade::buy),
+                ItemStack.CODEC.fieldOf("sell").forGetter(Trade::sell),
                 Codec.INT.optionalFieldOf("reputation", 0).forGetter(Trade::reputation),
                 Codec.INT.optionalFieldOf("max_uses", 1).forGetter(Trade::maxUses),
                 Codec.INT.optionalFieldOf("reputation_requirement", 0).forGetter(Trade::reputationRequirement),
@@ -52,7 +52,7 @@ public record TradePoolDefinition(
                 return ValidationResult.failure("trades must not be empty");
             for (Trade trade : data.trades) {
                 if (trade == null) return ValidationResult.failure("trade entry is null");
-                if (trade.buy == null || trade.sell == null)
+                if (trade.buy == null || trade.buy.isEmpty() || trade.sell == null || trade.sell.isEmpty())
                     return ValidationResult.failure("trade buy/sell is required");
                 if (trade.maxUses <= 0) return ValidationResult.failure("trade max_uses must be > 0");
             }
@@ -60,4 +60,3 @@ public record TradePoolDefinition(
         }
     }
 }
-

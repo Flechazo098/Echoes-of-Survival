@@ -9,7 +9,10 @@ import com.flechazo.eos.entity.ai.goal.*;
 import com.flechazo.eos.menu.SurvivorQuestMenu;
 import com.flechazo.eos.reputation.ReputationApi;
 import com.flechazo.eos.reputation.ReputationTiers;
+import net.minecraft.core.component.DataComponentPredicate;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
@@ -27,6 +30,9 @@ import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.*;
+import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
+import net.minecraft.world.entity.ai.goal.RandomStrollGoal;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
@@ -44,22 +50,44 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     private static final int INTERACTION_COMBAT_GRACE_TICKS = 100;
+    private static final double GUARD_COMBAT_RADIUS = 16.0D;
+    private static final double GUARD_COMBAT_RADIUS_SQ = GUARD_COMBAT_RADIUS * GUARD_COMBAT_RADIUS;
     private static final EntityDataAccessor<String> PROFESSION_ID =
             SynchedEntityData.defineId(FriendlySurvivorEntity.class, EntityDataSerializers.STRING);
     private static final EntityDataAccessor<String> SKIN_UUID =
             SynchedEntityData.defineId(FriendlySurvivorEntity.class, EntityDataSerializers.STRING);
+    private static final EntityDataAccessor<String> SKIN_USERNAME =
+            SynchedEntityData.defineId(FriendlySurvivorEntity.class, EntityDataSerializers.STRING);
     private static final EntityDataAccessor<String> RECRUIT_OWNER_UUID =
             SynchedEntityData.defineId(FriendlySurvivorEntity.class, EntityDataSerializers.STRING);
+    private static final EntityDataAccessor<Integer> PATROL_MODE =
+            SynchedEntityData.defineId(FriendlySurvivorEntity.class, EntityDataSerializers.INT);
+    private static final EntityDataAccessor<Integer> ATTACK_MODE =
+            SynchedEntityData.defineId(FriendlySurvivorEntity.class, EntityDataSerializers.INT);
+    private static final EntityDataAccessor<Optional<BlockPos>> GUARD_POS =
+            SynchedEntityData.defineId(FriendlySurvivorEntity.class, EntityDataSerializers.OPTIONAL_BLOCK_POS);
 
     private static final String NBT_PROFESSION_ID = "EosProfessionId";
     private static final String NBT_SKIN_UUID = "EosSkinUuid";
+    private static final String NBT_SKIN_USERNAME = "EosSkinUsername";
     private static final String NBT_RECRUIT_OWNER_UUID = "EosRecruitOwnerUuid";
+    private static final String NBT_PATROL_MODE = "EosPatrolMode";
+    private static final String NBT_ATTACK_MODE = "EosAttackMode";
+
+    public enum PatrolMode {
+        WANDER, FOLLOW, GUARD
+    }
+
+    public enum AttackMode {
+        PASSIVE, NEUTRAL, AGGRESSIVE, RAID
+    }
 
     private final List<Integer> offerReputationGains = new ArrayList<>();
     private boolean chargingCrossbow = false;
@@ -104,59 +132,357 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         super.defineSynchedData(builder);
         builder.define(PROFESSION_ID, "");
         builder.define(SKIN_UUID, "");
+        builder.define(SKIN_USERNAME, "");
         builder.define(RECRUIT_OWNER_UUID, "");
+        builder.define(PATROL_MODE, 0);
+        builder.define(ATTACK_MODE, 0);
+        builder.define(GUARD_POS, Optional.empty());
+    }
+
+    @Nullable
+    public BlockPos getGuardPos() {
+        return this.entityData.get(GUARD_POS).orElse(null);
+    }
+
+    public void setGuardPos(@Nullable BlockPos pos) {
+        this.entityData.set(GUARD_POS, Optional.ofNullable(pos));
+    }
+
+    public PatrolMode getPatrolMode() {
+        return PatrolMode.values()[this.entityData.get(PATROL_MODE)];
+    }
+
+    public void setPatrolMode(PatrolMode mode) {
+        this.entityData.set(PATROL_MODE, mode.ordinal());
+        if (mode == PatrolMode.GUARD) {
+            setGuardPos(this.blockPosition());
+        }
+    }
+
+    public PatrolMode cyclePatrolMode() {
+        PatrolMode[] vals = PatrolMode.values();
+        PatrolMode next = vals[(getPatrolMode().ordinal() + 1) % vals.length];
+        setPatrolMode(next);
+        return next;
+    }
+
+    public AttackMode getAttackMode() {
+        return AttackMode.values()[this.entityData.get(ATTACK_MODE)];
+    }
+
+    public void setAttackMode(AttackMode mode) {
+        this.entityData.set(ATTACK_MODE, mode.ordinal());
+    }
+
+    public AttackMode cycleAttackMode() {
+        AttackMode[] vals = AttackMode.values();
+        AttackMode next = vals[(getAttackMode().ordinal() + 1) % vals.length];
+        setAttackMode(next);
+        return next;
     }
 
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
-        this.goalSelector.addGoal(1, new SurvivorFleeGoal(this, 0.35F, 0.60F, 15.0F, 1.10, 1.30));
-        this.goalSelector.addGoal(2, new SurvivorAvoidCreeperGoal(this, 10.0F, 1.10, 1.35));
-        this.goalSelector.addGoal(3, new SurvivorLadderClimbGoal(this));
-        this.goalSelector.addGoal(4, new OpenDoorGoal(this, true));
-        this.goalSelector.addGoal(4, new OpenFenceGoal(this, true));
-        this.goalSelector.addGoal(5, new SurvivorEatFoodGoal(this, 0.45F, 20 * 6, 20 * 10, 10.0F));
-        this.goalSelector.addGoal(6, new SurvivorUsePotionGoal(this, () -> this.tacticalInventory));
-        this.goalSelector.addGoal(7, new FollowRecruitOwnerGoal(this, 1.05, 4.0F, 16.0F));
-        this.goalSelector.addGoal(8, new SurvivorWeaponSwitchGoal(this, 4.0));
+        this.goalSelector.addGoal(1, new ModeAwareFleeGoal());
+        this.goalSelector.addGoal(2, new ModeAwareAvoidCreeperGoal());
+        this.goalSelector.addGoal(3, new ReturnToGuardGoal());
+        this.goalSelector.addGoal(4, new SurvivorLadderClimbGoal(this));
+        this.goalSelector.addGoal(5, new OpenDoorGoal(this, true));
+        this.goalSelector.addGoal(5, new OpenFenceGoal(this, true));
+        this.goalSelector.addGoal(6, new SurvivorEatFoodGoal(this, 0.45F, 20 * 6, 20 * 10, 10.0F));
+        this.goalSelector.addGoal(7, new SurvivorUsePotionGoal(this, () -> this.tacticalInventory));
+        this.goalSelector.addGoal(8, new FollowRecruitOwnerGoal(this, 1.05, 4.0F, 16.0F));
+        this.goalSelector.addGoal(9, new SurvivorWeaponSwitchGoal(this, 4.0));
 
-        this.goalSelector.addGoal(9, new SurvivorRangedCrossbowAttackGoal<>(this, 1.10, 16.0F));
-        this.goalSelector.addGoal(9, new SurvivorRangedBowAttackGoal<>(this, 1.10, 20, 16.0F));
-        this.goalSelector.addGoal(10, new MeleeAttackGoal(this, 1.15, false));
-
+        this.goalSelector.addGoal(10, new ModeAwareAttackGoal());
         this.goalSelector.addGoal(11, new SurvivorRaiseShieldGoal(this));
-        this.goalSelector.addGoal(12, new RandomStrollGoal(this, 0.9));
+        this.goalSelector.addGoal(12, new ModeAwareStrollGoal());
+
         this.goalSelector.addGoal(13, new LookAtPlayerGoal(this, Player.class, 10.0F));
         this.goalSelector.addGoal(14, new RandomLookAroundGoal(this));
 
         this.targetSelector.addGoal(1, new HurtByTargetGoal(this));
+        this.targetSelector.addGoal(2, new ModeAwareTargetRaidLiving());
+        this.targetSelector.addGoal(3, new ModeAwareTargetPlayers());
+        this.targetSelector.addGoal(4, new ModeAwareTargetHostile());
+        this.targetSelector.addGoal(5, new ModeAwareTargetNeutral());
+        this.targetSelector.addGoal(6, new ModeAwareTargetFriendly());
+        this.targetSelector.addGoal(7, new ModeAwareTargetMonsters());
+    }
 
-        this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(
-                this,
-                Player.class,
-                10,
-                true,
-                false,
-                living -> {
-                    if (!(living instanceof ServerPlayer sp)) return false;
-                    if (isRecruitOwner(sp)) return false;
-                    int rep = ReputationApi.get(sp);
-                    return ReputationTiers.isHostileToPlayer(rep);
-                }
-        ));
+    private class ModeAwareFleeGoal extends Goal {
+        private final Goal wrapped = new SurvivorFleeGoal(FriendlySurvivorEntity.this, 0.35F, 0.60F, 15.0F, 1.10, 1.30);
 
-        this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, HostileSurvivorEntity.class, 5, false, false, null));
+        @Override public boolean canUse() {
+            if (getPatrolMode() == PatrolMode.GUARD) return false;
+            if (getAttackMode() == AttackMode.RAID || getAttackMode() == AttackMode.AGGRESSIVE) return false;
+            return wrapped.canUse();
+        }
+        @Override public boolean canContinueToUse() { return wrapped.canContinueToUse(); }
+        @Override public void start() { wrapped.start(); }
+        @Override public void stop() { wrapped.stop(); }
+        @Override public void tick() { wrapped.tick(); }
+    }
 
-        this.targetSelector.addGoal(4, new NearestAttackableTargetGoal<>(
-                this,
-                NeutralSurvivorEntity.class,
-                5,
-                false,
-                false,
-                living -> living instanceof NeutralSurvivorEntity n && n.isAngry()
-        ));
+    private class ModeAwareAvoidCreeperGoal extends Goal {
+        private final Goal wrapped = new SurvivorAvoidCreeperGoal(FriendlySurvivorEntity.this, 10.0F, 1.10, 1.35);
 
-        this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Monster.class, 5, false, false, null));
+        @Override public boolean canUse() {
+            if (getPatrolMode() == PatrolMode.GUARD) return false;
+            return wrapped.canUse();
+        }
+        @Override public boolean canContinueToUse() { return wrapped.canContinueToUse(); }
+        @Override public void start() { wrapped.start(); }
+        @Override public void stop() { wrapped.stop(); }
+        @Override public void tick() { wrapped.tick(); }
+    }
+
+    private class ReturnToGuardGoal extends Goal {
+        private static final double RETURN_DIST_SQ = 4.0 * 4.0;
+        private static final double TELEPORT_DIST_SQ = 64.0 * 64.0;
+        private int repath;
+
+        @Override public boolean canUse() {
+            if (getPatrolMode() != PatrolMode.GUARD) return false;
+            if (getTarget() != null) return false;
+            BlockPos pos = getGuardPos();
+            return pos != null && distanceToSqr(pos.getX(), pos.getY(), pos.getZ()) > RETURN_DIST_SQ;
+        }
+        @Override public boolean canContinueToUse() {
+            return getTarget() == null && canUse();
+        }
+        @Override public void start() { this.repath = 0; }
+        @Override public void tick() {
+            BlockPos pos = getGuardPos();
+            if (pos == null) return;
+            if (distanceToSqr(pos.getX(), pos.getY(), pos.getZ()) >= TELEPORT_DIST_SQ) {
+                teleportTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
+            } else if (--this.repath <= 0) {
+                this.repath = 20;
+                getNavigation().moveTo(pos.getX(), pos.getY(), pos.getZ(), 1.0);
+            }
+        }
+        @Override public void stop() { getNavigation().stop(); }
+    }
+
+    private class ModeAwareAttackGoal extends Goal {
+        private final Goal crossbow = new SurvivorRangedCrossbowAttackGoal<>(FriendlySurvivorEntity.this, 1.10, 16.0F);
+        private final Goal bow = new SurvivorRangedBowAttackGoal<>(FriendlySurvivorEntity.this, 1.10, 20, 16.0F);
+        private final Goal melee = new MeleeAttackGoal(FriendlySurvivorEntity.this, 1.15, false);
+        private final Goal gun = new SurvivorGunAttackGoal(FriendlySurvivorEntity.this);
+        @Nullable
+        private Goal active;
+
+        private ModeAwareAttackGoal() {
+            this.setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK));
+        }
+
+        @Override public boolean canUse() {
+            if (!canFightCurrentTarget()) return false;
+            if (getAttackMode() == AttackMode.PASSIVE) return false;
+            this.active = selectGoal();
+            return this.active != null;
+        }
+        @Override public boolean canContinueToUse() {
+            if (getAttackMode() == AttackMode.PASSIVE) return false;
+            if (!canFightCurrentTarget()) return false;
+            return this.active != null && this.active.canContinueToUse();
+        }
+        @Override public void start() {
+            if (this.active != null) {
+                this.active.start();
+            }
+        }
+        @Override public void stop() {
+            if (this.active != null) {
+                this.active.stop();
+                this.active = null;
+            }
+        }
+        @Override public boolean requiresUpdateEveryTick() {
+            return true;
+        }
+        @Override public void tick() {
+            if (this.active != null) {
+                this.active.tick();
+            }
+        }
+
+        @Nullable
+        private Goal selectGoal() {
+            if (getMainHandItem().getItem() instanceof com.atsuishio.superbwarfare.item.gun.GunItem) return gun;
+            if (crossbow.canUse()) return crossbow;
+            if (bow.canUse()) return bow;
+            if (melee.canUse()) return melee;
+            return null;
+        }
+    }
+
+    private class ModeAwareStrollGoal extends Goal {
+        private final Goal wrapped = new RandomStrollGoal(FriendlySurvivorEntity.this, 0.9);
+        @Override public boolean canUse() {
+            return getPatrolMode() == PatrolMode.WANDER && wrapped.canUse();
+        }
+        @Override public boolean canContinueToUse() { return getPatrolMode() == PatrolMode.WANDER && wrapped.canContinueToUse(); }
+        @Override public void start() { wrapped.start(); }
+        @Override public void stop() { wrapped.stop(); }
+        @Override public void tick() { wrapped.tick(); }
+    }
+
+    private class ModeAwareTargetPlayers extends NearestAttackableTargetGoal<Player> {
+        ModeAwareTargetPlayers() {
+            super(FriendlySurvivorEntity.this, Player.class, 10, true, false,
+                    e -> e instanceof ServerPlayer sp
+                            && !FriendlySurvivorEntity.this.isRecruitOwner(sp)
+                            && FriendlySurvivorEntity.this.canAggressiveTargetPlayer(sp)
+                            && FriendlySurvivorEntity.this.isWithinGuardCombatArea(sp));
+        }
+        @Override public boolean canUse() {
+            if (getAttackMode() != AttackMode.AGGRESSIVE) return false;
+            return super.canUse();
+        }
+    }
+
+    private class ModeAwareTargetHostile extends NearestAttackableTargetGoal<HostileSurvivorEntity> {
+        ModeAwareTargetHostile() {
+            super(FriendlySurvivorEntity.this, HostileSurvivorEntity.class, 5, true, false,
+                    target -> target instanceof HostileSurvivorEntity hostile
+                            && FriendlySurvivorEntity.this.canTargetHostileSurvivor(hostile)
+                            && FriendlySurvivorEntity.this.isWithinGuardCombatArea(hostile));
+        }
+        @Override public boolean canUse() {
+            return getAttackMode() != AttackMode.PASSIVE && getAttackMode() != AttackMode.RAID && super.canUse();
+        }
+    }
+
+    private class ModeAwareTargetNeutral extends NearestAttackableTargetGoal<NeutralSurvivorEntity> {
+        ModeAwareTargetNeutral() {
+            super(FriendlySurvivorEntity.this, NeutralSurvivorEntity.class, 5, true, false,
+                    target -> target instanceof NeutralSurvivorEntity neutral
+                            && FriendlySurvivorEntity.this.canTargetNeutralSurvivor(neutral)
+                            && FriendlySurvivorEntity.this.isWithinGuardCombatArea(neutral));
+        }
+        @Override public boolean canUse() {
+            return getAttackMode() != AttackMode.PASSIVE && getAttackMode() != AttackMode.RAID && super.canUse();
+        }
+    }
+
+    private class ModeAwareTargetFriendly extends NearestAttackableTargetGoal<FriendlySurvivorEntity> {
+        ModeAwareTargetFriendly() {
+            super(FriendlySurvivorEntity.this, FriendlySurvivorEntity.class, 5, true, false,
+                    target -> target instanceof FriendlySurvivorEntity survivor
+                            && FriendlySurvivorEntity.this.canTargetFriendlySurvivor(survivor)
+                            && FriendlySurvivorEntity.this.isWithinGuardCombatArea(survivor));
+        }
+        @Override public boolean canUse() {
+            return getAttackMode() == AttackMode.AGGRESSIVE && super.canUse();
+        }
+    }
+
+    private class ModeAwareTargetMonsters extends NearestAttackableTargetGoal<Monster> {
+        ModeAwareTargetMonsters() {
+            super(FriendlySurvivorEntity.this, Monster.class, 5, true, false,
+                    target -> target instanceof Monster monster
+                            && FriendlySurvivorEntity.this.canTargetMonster(monster)
+                            && FriendlySurvivorEntity.this.isWithinGuardCombatArea(monster));
+        }
+        @Override public boolean canUse() {
+            return getAttackMode() != AttackMode.PASSIVE && getAttackMode() != AttackMode.RAID && super.canUse();
+        }
+    }
+
+    private class ModeAwareTargetRaidLiving extends NearestAttackableTargetGoal<LivingEntity> {
+        ModeAwareTargetRaidLiving() {
+            super(FriendlySurvivorEntity.this, LivingEntity.class, 5, true, false,
+                    target -> FriendlySurvivorEntity.this.canRaidTarget(target)
+                            && FriendlySurvivorEntity.this.isWithinGuardCombatArea(target));
+        }
+        @Override public boolean canUse() {
+            return getAttackMode() == AttackMode.RAID && super.canUse();
+        }
+    }
+
+    private boolean canFightCurrentTarget() {
+        LivingEntity target = this.getTarget();
+        if (target == null || !target.isAlive()) return false;
+        if (!isWithinGuardCombatArea(target)) return false;
+        if (this.getLastHurtByMob() == target) return true;
+        return canTargetByCurrentAttackMode(target);
+    }
+
+    private boolean canAggressiveTargetPlayer(ServerPlayer player) {
+        return ReputationTiers.isHostileToPlayer(ReputationApi.get(player));
+    }
+
+    private boolean canTargetHostileSurvivor(HostileSurvivorEntity target) {
+        return target != null && (getAttackMode() == AttackMode.NEUTRAL || getAttackMode() == AttackMode.AGGRESSIVE);
+    }
+
+    private boolean canTargetNeutralSurvivor(NeutralSurvivorEntity target) {
+        if (target == null) return false;
+        return switch (getAttackMode()) {
+            case NEUTRAL -> target.isAngry();
+            case AGGRESSIVE -> true;
+            default -> false;
+        };
+    }
+
+    private boolean canTargetFriendlySurvivor(FriendlySurvivorEntity target) {
+        return target != null && target != this && getAttackMode() == AttackMode.AGGRESSIVE && !isSameFaction(target);
+    }
+
+    private boolean canTargetMonster(Monster target) {
+        return target != null && (getAttackMode() == AttackMode.NEUTRAL || getAttackMode() == AttackMode.AGGRESSIVE);
+    }
+
+    private boolean canRaidTarget(LivingEntity target) {
+        if (target == null || target == this) return false;
+        if (target instanceof Player) return false;
+        return !isSameFaction(target);
+    }
+
+    private boolean canTargetByCurrentAttackMode(LivingEntity target) {
+        return switch (getAttackMode()) {
+            case PASSIVE -> false;
+            case NEUTRAL -> target instanceof HostileSurvivorEntity hostile && canTargetHostileSurvivor(hostile)
+                    || target instanceof NeutralSurvivorEntity neutral && canTargetNeutralSurvivor(neutral)
+                    || target instanceof Monster monster && canTargetMonster(monster);
+            case AGGRESSIVE -> target instanceof ServerPlayer player && canAggressiveTargetPlayer(player)
+                    || target instanceof HostileSurvivorEntity hostile && canTargetHostileSurvivor(hostile)
+                    || target instanceof NeutralSurvivorEntity neutral && canTargetNeutralSurvivor(neutral)
+                    || target instanceof FriendlySurvivorEntity survivor && canTargetFriendlySurvivor(survivor)
+                    || target instanceof Monster monster && canTargetMonster(monster);
+            case RAID -> canRaidTarget(target);
+        };
+    }
+
+    private boolean isSameFaction(LivingEntity target) {
+        UUID ownerId = getRecruitOwnerUuid().orElse(null);
+        if (ownerId == null || target == null) return false;
+        if (target instanceof FriendlySurvivorEntity survivor) {
+            return survivor.getRecruitOwnerUuid().map(ownerId::equals).orElse(false);
+        }
+        if (target instanceof TamableAnimal tamable) {
+            return ownerId.equals(tamable.getOwnerUUID());
+        }
+        return false;
+    }
+
+    private boolean isWithinGuardCombatArea(LivingEntity target) {
+        if (target == null || getPatrolMode() != PatrolMode.GUARD) return true;
+        BlockPos guardPos = getGuardPos();
+        if (guardPos == null) return true;
+        return target.distanceToSqr(guardPos.getX() + 0.5D, guardPos.getY(), guardPos.getZ() + 0.5D) <= GUARD_COMBAT_RADIUS_SQ;
+    }
+
+    private void tickGuardCombatLeash() {
+        if (getPatrolMode() != PatrolMode.GUARD) return;
+        LivingEntity target = this.getTarget();
+        if (target != null && !isWithinGuardCombatArea(target)) {
+            this.setTarget(null);
+            this.getNavigation().stop();
+        }
     }
 
     public FoodData getSurvivorFood() {
@@ -218,6 +544,32 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
 
     public void setSkinUuid(UUID uuid) {
         this.entityData.set(SKIN_UUID, uuid != null ? uuid.toString() : "");
+        if (uuid != null) {
+            EosDatapackIndex.skinLibraryUsername(uuid).ifPresent(this::setSkinUsername);
+        }
+    }
+
+    @Override
+    public Optional<String> getSkinUsername() {
+        String raw = this.entityData.get(SKIN_USERNAME);
+        if (raw == null || raw.isBlank()) return Optional.empty();
+        return Optional.of(raw);
+    }
+
+    @Override
+    public void setSkinUsername(@Nullable String username) {
+        this.entityData.set(SKIN_USERNAME, username != null ? username.trim() : "");
+    }
+
+    @Override
+    public void setSkinProfile(@Nullable EosDatapackIndex.SkinProfile profile) {
+        if (profile == null) {
+            setSkinUuid(null);
+            setSkinUsername(null);
+            return;
+        }
+        setSkinUuid(profile.uuid());
+        setSkinUsername(profile.username());
     }
 
     public Optional<UUID> getRecruitOwnerUuid() {
@@ -283,7 +635,10 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         super.addAdditionalSaveData(tag);
         getProfessionId().ifPresent(id -> tag.putString(NBT_PROFESSION_ID, id.toString()));
         getSkinUuid().ifPresent(uuid -> tag.putString(NBT_SKIN_UUID, uuid.toString()));
+        getSkinUsername().ifPresent(username -> tag.putString(NBT_SKIN_USERNAME, username));
         getRecruitOwnerUuid().ifPresent(uuid -> tag.putString(NBT_RECRUIT_OWNER_UUID, uuid.toString()));
+        tag.putString(NBT_PATROL_MODE, getPatrolMode().name());
+        tag.putString(NBT_ATTACK_MODE, getAttackMode().name());
         this.survivorFood.addAdditionalSaveData(tag);
     }
 
@@ -302,6 +657,9 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
             } catch (Exception ignored) {
             }
         }
+        if (tag.contains(NBT_SKIN_USERNAME)) {
+            setSkinUsername(tag.getString(NBT_SKIN_USERNAME));
+        }
         if (tag.contains(NBT_RECRUIT_OWNER_UUID)) {
             try {
                 this.entityData.set(RECRUIT_OWNER_UUID, UUID.fromString(tag.getString(NBT_RECRUIT_OWNER_UUID)).toString());
@@ -310,6 +668,12 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
             }
         }
         this.survivorFood.readAdditionalSaveData(tag);
+        if (tag.contains(NBT_PATROL_MODE, Tag.TAG_STRING)) {
+            try { setPatrolMode(PatrolMode.valueOf(tag.getString(NBT_PATROL_MODE))); } catch (Exception ignored) {}
+        }
+        if (tag.contains(NBT_ATTACK_MODE, Tag.TAG_STRING)) {
+            try { setAttackMode(AttackMode.valueOf(tag.getString(NBT_ATTACK_MODE))); } catch (Exception ignored) {}
+        }
     }
 
     @Override
@@ -366,13 +730,13 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
                     if (trade.reputationRequirement() > 0) continue;
                 }
 
-                ItemStack buy = trade.buy().toStack();
-                ItemStack sell = trade.sell().toStack();
+                ItemStack buy = trade.buy();
+                ItemStack sell = trade.sell();
                 if (buy.isEmpty() || sell.isEmpty()) continue;
 
                 MerchantOffer offer = new MerchantOffer(
-                        new ItemCost(buy.getItem(), buy.getCount()),
-                        sell,
+                        itemCost(buy),
+                        sell.copy(),
                         trade.maxUses(),
                         0,
                         0.0F
@@ -471,7 +835,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
             if (pool == null || pool.trades() == null) continue;
             for (TradePoolDefinition.Trade trade : pool.trades()) {
                 if (trade == null || trade.buy() == null || trade.sell() == null) continue;
-                if (trade.buy().toStack().isEmpty() || trade.sell().toStack().isEmpty()) continue;
+                if (trade.buy().isEmpty() || trade.sell().isEmpty()) continue;
                 if (isTradeUnlocked(trade, reputation)) return false;
                 hasLockedTrade = true;
             }
@@ -512,6 +876,14 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         return offerReputationGains.get(idx);
     }
 
+    private static ItemCost itemCost(ItemStack stack) {
+        return new ItemCost(
+                stack.getItemHolder(),
+                stack.getCount(),
+                DataComponentPredicate.allOf(stack.getComponents())
+        );
+    }
+
     private static boolean isTradeUnlocked(TradePoolDefinition.Trade trade, int reputation) {
         int required = trade.reputationRequirement();
         if (trade.unlockCondition().isPresent()) {
@@ -541,17 +913,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     private void ensureSkinAssigned(ProfessionDefinition profession) {
         if (this.level().isClientSide) return;
         if (getSkinUuid().isPresent()) return;
-
-        if (profession != null && profession.skin() != null && profession.skin().isPresent()) {
-            return;
-        }
-
-        List<UUID> pool = EosDatapackIndex.skinLibraryUuids();
-        if (pool.isEmpty()) return;
-
-        int idx = Math.floorMod(this.getUUID().hashCode(), pool.size());
-        UUID picked = pool.get(idx);
-        if (picked != null) setSkinUuid(picked);
+        EosDatapackIndex.pickSkinProfile(this.getUUID()).ifPresent(this::setSkinProfile);
     }
 
     @Override
@@ -612,6 +974,9 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         super.aiStep();
         if (!this.level().isClientSide && this.survivorFood.getExhaustionLevel() > 4.0F) {
             this.survivorFood.setExhaustion(this.survivorFood.getExhaustionLevel() - 4.0F);
+        }
+        if (!this.level().isClientSide) {
+            tickGuardCombatLeash();
         }
         if (this.level().isClientSide || this.interactingPlayerId == null) return;
 

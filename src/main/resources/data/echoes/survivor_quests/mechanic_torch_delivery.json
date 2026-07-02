@@ -8,9 +8,8 @@
   ],
   "rewards": {
     "items": [
-      { "item": "minecraft:torch", "count": 32 }
+      { "id": "minecraft:torch", "count": 32 }
     ],
     "reputation": 12
   }
 }
-

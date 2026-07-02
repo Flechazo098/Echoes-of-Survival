@@ -43,13 +43,14 @@ public class HostileSurvivorEntity extends AbstractSurvivorEntity {
         this.goalSelector.addGoal(4, new OpenFenceGoal(this, true));
         this.goalSelector.addGoal(5, new SurvivorUsePotionGoal(this, () -> this.tacticalInventory));
         this.goalSelector.addGoal(7, new SurvivorWeaponSwitchGoal(this, 6.0));
-        this.goalSelector.addGoal(8, new SurvivorRangedCrossbowAttackGoal<>(this, 1.15, 18.0F));
-        this.goalSelector.addGoal(8, new SurvivorRangedBowAttackGoal<>(this, 1.15, 20, 18.0F));
-        this.goalSelector.addGoal(9, new MeleeAttackGoal(this, 1.25, false));
-        this.goalSelector.addGoal(10, new SurvivorRaiseShieldGoal(this));
-        this.goalSelector.addGoal(11, new RandomStrollGoal(this, 1.0));
-        this.goalSelector.addGoal(12, new LookAtPlayerGoal(this, Player.class, 10.0F));
-        this.goalSelector.addGoal(13, new RandomLookAroundGoal(this));
+        this.goalSelector.addGoal(8, new SurvivorGunAttackGoal(this));
+        this.goalSelector.addGoal(9, new SurvivorRangedCrossbowAttackGoal<>(this, 1.15, 18.0F));
+        this.goalSelector.addGoal(9, new SurvivorRangedBowAttackGoal<>(this, 1.15, 20, 18.0F));
+        this.goalSelector.addGoal(10, new MeleeAttackGoal(this, 1.25, false));
+        this.goalSelector.addGoal(11, new SurvivorRaiseShieldGoal(this));
+        this.goalSelector.addGoal(12, new RandomStrollGoal(this, 1.0));
+        this.goalSelector.addGoal(13, new LookAtPlayerGoal(this, Player.class, 10.0F));
+        this.goalSelector.addGoal(14, new RandomLookAroundGoal(this));
 
         this.targetSelector.addGoal(1, new HurtByTargetGoal(this));
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(

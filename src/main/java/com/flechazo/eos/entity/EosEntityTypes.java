@@ -13,6 +13,8 @@ import net.minecraft.world.entity.SpawnPlacementTypes;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
 import net.neoforged.neoforge.event.entity.RegisterSpawnPlacementsEvent;
 import net.neoforged.neoforge.registries.DeferredRegister;
@@ -63,6 +65,13 @@ public final class EosEntityTypes {
             event.put(FRIENDLY_SURVIVOR.get(), FriendlySurvivorEntity.createAttributes().build());
             event.put(HOSTILE_SURVIVOR.get(), HostileSurvivorEntity.createAttributes().build());
             event.put(NEUTRAL_SURVIVOR.get(), NeutralSurvivorEntity.createAttributes().build());
+        }
+
+        @SubscribeEvent
+        public static void onCapabilities(RegisterCapabilitiesEvent event) {
+            event.registerEntity(Capabilities.ItemHandler.ENTITY, FRIENDLY_SURVIVOR.get(), (entity, ignored) -> entity.tacticalInventory);
+            event.registerEntity(Capabilities.ItemHandler.ENTITY, HOSTILE_SURVIVOR.get(), (entity, ignored) -> entity.tacticalInventory);
+            event.registerEntity(Capabilities.ItemHandler.ENTITY, NEUTRAL_SURVIVOR.get(), (entity, ignored) -> entity.tacticalInventory);
         }
 
         @SubscribeEvent

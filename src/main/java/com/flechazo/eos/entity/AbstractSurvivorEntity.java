@@ -41,10 +41,13 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
 
     private static final EntityDataAccessor<String> SKIN_UUID =
             SynchedEntityData.defineId(AbstractSurvivorEntity.class, EntityDataSerializers.STRING);
+    private static final EntityDataAccessor<String> SKIN_USERNAME =
+            SynchedEntityData.defineId(AbstractSurvivorEntity.class, EntityDataSerializers.STRING);
     private static final EntityDataAccessor<String> PROFESSION_ID =
             SynchedEntityData.defineId(AbstractSurvivorEntity.class, EntityDataSerializers.STRING);
 
     protected static final String NBT_SKIN_UUID = "EosSkinUuid";
+    protected static final String NBT_SKIN_USERNAME = "EosSkinUsername";
     protected static final String NBT_PROFESSION_ID = "EosProfessionId";
     private static final String NBT_TACTICAL = "EosTactical";
 
@@ -66,6 +69,7 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
     protected void defineSynchedData(SynchedEntityData.Builder builder) {
         super.defineSynchedData(builder);
         builder.define(SKIN_UUID, "");
+        builder.define(SKIN_USERNAME, "");
         builder.define(PROFESSION_ID, "");
     }
 
@@ -82,16 +86,43 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
 
     public void setSkinUuid(@Nullable UUID uuid) {
         this.entityData.set(SKIN_UUID, uuid != null ? uuid.toString() : "");
+        if (uuid != null) {
+            EosDatapackIndex.skinLibraryUsername(uuid).ifPresent(this::setSkinUsername);
+        }
+    }
+
+    public Optional<String> getSkinUsername() {
+        String raw = this.entityData.get(SKIN_USERNAME);
+        if (raw == null || raw.isBlank()) return Optional.empty();
+        return Optional.of(raw);
+    }
+
+    public void setSkinUsername(@Nullable String username) {
+        this.entityData.set(SKIN_USERNAME, username != null ? username.trim() : "");
+    }
+
+    public void setSkinProfile(@Nullable EosDatapackIndex.SkinProfile profile) {
+        if (profile == null) {
+            setSkinUuid(null);
+            setSkinUsername(null);
+            return;
+        }
+        setSkinUuid(profile.uuid());
+        setSkinUsername(profile.username());
+    }
+
+    protected void ensureSkinUsernameAssigned() {
+        if (this.level().isClientSide) return;
+        if (getSkinUsername().isPresent()) return;
+        getSkinUuid()
+                .flatMap(EosDatapackIndex::skinLibraryUsername)
+                .ifPresent(this::setSkinUsername);
     }
 
     protected void ensureSkinAssigned() {
         if (this.level().isClientSide) return;
         if (getSkinUuid().isPresent()) return;
-        List<UUID> pool = EosDatapackIndex.skinLibraryUuids();
-        if (pool.isEmpty()) return;
-        int idx = Math.floorMod(this.getUUID().hashCode(), pool.size());
-        UUID picked = pool.get(idx);
-        if (picked != null) setSkinUuid(picked);
+        EosDatapackIndex.pickSkinProfile(this.getUUID()).ifPresent(this::setSkinProfile);
     }
 
     public Optional<ResourceLocation> getProfessionId() {
@@ -106,7 +137,9 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
 
     @Override
     public Component getDisplayName() {
-        Component name = super.getDisplayName();
+        Component name = getSkinUsername()
+                .<Component>map(Component::literal)
+                .orElseGet(super::getDisplayName);
         Optional<ResourceLocation> professionId = getProfessionId();
         if (professionId.isEmpty()) {
             return name;
@@ -177,6 +210,7 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
     public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
         getSkinUuid().ifPresent(uuid -> tag.putString(NBT_SKIN_UUID, uuid.toString()));
+        getSkinUsername().ifPresent(username -> tag.putString(NBT_SKIN_USERNAME, username));
         getProfessionId().ifPresent(id -> tag.putString(NBT_PROFESSION_ID, id.toString()));
         tag.put(NBT_TACTICAL, tacticalInventory.serializeNBT(this.registryAccess()));
     }
@@ -189,6 +223,9 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
                 setSkinUuid(UUID.fromString(tag.getString(NBT_SKIN_UUID)));
             } catch (Exception ignored) {
             }
+        }
+        if (tag.contains(NBT_SKIN_USERNAME)) {
+            setSkinUsername(tag.getString(NBT_SKIN_USERNAME));
         }
         if (tag.contains(NBT_PROFESSION_ID)) {
             ResourceLocation id = ResourceLocation.tryParse(tag.getString(NBT_PROFESSION_ID));
@@ -290,7 +327,10 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
     @Override
     public void aiStep() {
         super.aiStep();
-        if (!this.level().isClientSide) tickReactiveShield();
+        if (!this.level().isClientSide) {
+            ensureSkinUsernameAssigned();
+            tickReactiveShield();
+        }
     }
 
     private void tickReactiveShield() {

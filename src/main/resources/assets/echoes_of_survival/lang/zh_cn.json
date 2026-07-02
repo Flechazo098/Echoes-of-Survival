@@ -23,7 +23,7 @@
   "gui.echoes_of_survival.interact.trade": "交易",
   "gui.echoes_of_survival.interact.quest": "任务",
   "gui.echoes_of_survival.interact.recruit": "招募",
-  "gui.echoes_of_survival.interact.dismiss": "解除跟随",
+  "gui.echoes_of_survival.interact.dismiss": "解雇",
   "gui.echoes_of_survival.interact.personal": "个人",
   "gui.echoes_of_survival.survivor.personal": "幸存者个人界面",
   "message.echoes_of_survival.recruit.success": "已招募 %s",
@@ -55,5 +55,15 @@
   "profession.echoes.scavenger": "拾荒者",
   "entity.echoes_of_survival.neutral_survivor.warn": "后退，陌生人！",
   "entity.echoes_of_survival.neutral_survivor.hostile": "你自找的！",
-  "entity.echoes_of_survival.neutral_survivor.beg": "请...给我点吃的..."
+  "entity.echoes_of_survival.neutral_survivor.beg": "请...给我点吃的...",
+  "message.echoes_of_survival.mode.not_recruited": "你必须先招募这个幸存者",
+  "message.echoes_of_survival.mode.patrol": "巡逻模式：%s",
+  "message.echoes_of_survival.mode.attack": "攻击模式：%s",
+  "gui.echoes_of_survival.mode.patrol.wander": "游荡",
+  "gui.echoes_of_survival.mode.patrol.follow": "跟随",
+  "gui.echoes_of_survival.mode.patrol.guard": "驻守",
+  "gui.echoes_of_survival.mode.attack.passive": "被动",
+  "gui.echoes_of_survival.mode.attack.neutral": "中立",
+  "gui.echoes_of_survival.mode.attack.aggressive": "激进",
+  "gui.echoes_of_survival.mode.attack.raid": "劫掠"
 }
