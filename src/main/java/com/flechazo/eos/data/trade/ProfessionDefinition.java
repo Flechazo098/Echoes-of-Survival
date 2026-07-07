@@ -2,6 +2,8 @@ package com.flechazo.eos.data.trade;
 
 import cc.sighs.oelib.data.api.DataDriven;
 import cc.sighs.oelib.data.api.DataValidator;
+import com.flechazo.hkt.Maybe;
+import com.flechazo.hkt.business.util.OptionalOps;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.Util;
@@ -33,6 +35,18 @@ public record ProfessionDefinition(
             Logic.CODEC.fieldOf("logic").forGetter(ProfessionDefinition::logic)
     ).apply(instance, ProfessionDefinition::new));
 
+    public Maybe<ResourceLocation> skinLibrary() {
+        return OptionalOps.toMaybe(skin);
+    }
+
+    public Maybe<ResourceLocation> hostileSkinLibrary() {
+        return OptionalOps.toMaybe(hostileSkin);
+    }
+
+    public Maybe<ResourceLocation> neutralSkinLibrary() {
+        return OptionalOps.toMaybe(neutralSkin);
+    }
+
     public record InitialEquipment(
             Optional<ResourceLocation> armorSet,
             List<ItemStack> tacticalItems
@@ -41,6 +55,10 @@ public record ProfessionDefinition(
                 ResourceLocation.CODEC.optionalFieldOf("armor_set").forGetter(InitialEquipment::armorSet),
                 ItemStack.CODEC.listOf().optionalFieldOf("tactical_items", List.of()).forGetter(InitialEquipment::tacticalItems)
         ).apply(instance, InitialEquipment::new));
+
+        public Maybe<ResourceLocation> armorSetId() {
+            return OptionalOps.toMaybe(armorSet);
+        }
     }
 
     public record Logic(

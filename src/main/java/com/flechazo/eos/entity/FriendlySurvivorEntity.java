@@ -9,6 +9,8 @@ import com.flechazo.eos.entity.ai.goal.*;
 import com.flechazo.eos.menu.SurvivorQuestMenu;
 import com.flechazo.eos.reputation.ReputationApi;
 import com.flechazo.eos.reputation.ReputationTiers;
+import com.flechazo.hkt.Maybe;
+import com.flechazo.hkt.business.core.Attempts;
 import net.minecraft.core.component.DataComponentPredicate;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.core.BlockPos;
@@ -522,24 +524,22 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         super.setTarget(target);
     }
 
-    public Optional<ResourceLocation> getProfessionId() {
-        String raw = this.entityData.get(PROFESSION_ID);
-        if (raw.isBlank()) return Optional.empty();
-        return Optional.ofNullable(ResourceLocation.tryParse(raw));
+    @Override
+    public Maybe<ResourceLocation> getProfessionId() {
+        return Maybe.ofNullable(this.entityData.get(PROFESSION_ID))
+                .filter(raw -> !raw.isBlank())
+                .flatMap(raw -> Maybe.ofNullable(ResourceLocation.tryParse(raw)));
     }
 
     public void setProfessionId(ResourceLocation id) {
         this.entityData.set(PROFESSION_ID, id.toString());
     }
 
-    public Optional<UUID> getSkinUuid() {
-        String raw = this.entityData.get(SKIN_UUID);
-        if (raw.isBlank()) return Optional.empty();
-        try {
-            return Optional.of(UUID.fromString(raw));
-        } catch (Exception ignored) {
-            return Optional.empty();
-        }
+    @Override
+    public Maybe<UUID> getSkinUuid() {
+        return Maybe.ofNullable(this.entityData.get(SKIN_UUID))
+                .filter(raw -> !raw.isBlank())
+                .flatMap(raw -> Attempts.maybe(() -> UUID.fromString(raw)));
     }
 
     public void setSkinUuid(UUID uuid) {
@@ -550,10 +550,8 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     }
 
     @Override
-    public Optional<String> getSkinUsername() {
-        String raw = this.entityData.get(SKIN_USERNAME);
-        if (raw == null || raw.isBlank()) return Optional.empty();
-        return Optional.of(raw);
+    public Maybe<String> getSkinUsername() {
+        return Maybe.ofNullable(this.entityData.get(SKIN_USERNAME)).filter(raw -> !raw.isBlank());
     }
 
     @Override
@@ -568,22 +566,18 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
             setSkinUsername(null);
             return;
         }
-        setSkinUuid(profile.uuid().orElse(null));
+        setSkinUuid(profile.uuid().fold(() -> null, uuid -> uuid));
         setSkinUsername(profile.name());
     }
 
-    public Optional<UUID> getRecruitOwnerUuid() {
-        String raw = this.entityData.get(RECRUIT_OWNER_UUID);
-        if (raw.isBlank()) return Optional.empty();
-        try {
-            return Optional.of(UUID.fromString(raw));
-        } catch (Exception ignored) {
-            return Optional.empty();
-        }
+    public Maybe<UUID> getRecruitOwnerUuid() {
+        return Maybe.ofNullable(this.entityData.get(RECRUIT_OWNER_UUID))
+                .filter(raw -> !raw.isBlank())
+                .flatMap(raw -> Attempts.maybe(() -> UUID.fromString(raw)));
     }
 
     public boolean isRecruited() {
-        return getRecruitOwnerUuid().isPresent();
+        return getRecruitOwnerUuid().isDefined();
     }
 
     public boolean isRecruitOwner(Player player) {
@@ -593,8 +587,8 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     public boolean recruit(ServerPlayer player) {
         if (this.level().isClientSide || player == null || !this.isAlive() || this.isBaby()) return false;
 
-        Optional<UUID> currentOwner = getRecruitOwnerUuid();
-        if (currentOwner.isPresent()) {
+        Maybe<UUID> currentOwner = getRecruitOwnerUuid();
+        if (currentOwner.isDefined()) {
             player.displayClientMessage(Component.translatable(
                     currentOwner.get().equals(player.getUUID())
                             ? "message.echoes_of_survival.recruit.already_yours"
@@ -646,26 +640,26 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     public void readAdditionalSaveData(CompoundTag tag) {
         super.readAdditionalSaveData(tag);
         if (tag.contains(NBT_PROFESSION_ID)) {
-            ResourceLocation id = ResourceLocation.tryParse(tag.getString(NBT_PROFESSION_ID));
-            if (id != null) {
-                setProfessionId(id);
-            }
+            Maybe.ofNullable(tag.getString(NBT_PROFESSION_ID))
+                    .filter(raw -> !raw.isBlank())
+                    .flatMap(raw -> Maybe.ofNullable(ResourceLocation.tryParse(raw)))
+                    .ifPresent(this::setProfessionId);
         }
         if (tag.contains(NBT_SKIN_UUID)) {
-            try {
-                setSkinUuid(UUID.fromString(tag.getString(NBT_SKIN_UUID)));
-            } catch (Exception ignored) {
-            }
+            Maybe.ofNullable(tag.getString(NBT_SKIN_UUID))
+                    .filter(raw -> !raw.isBlank())
+                    .flatMap(raw -> Attempts.maybe(() -> UUID.fromString(raw)))
+                    .ifPresent(this::setSkinUuid);
         }
         if (tag.contains(NBT_SKIN_USERNAME)) {
             setSkinUsername(tag.getString(NBT_SKIN_USERNAME));
         }
         if (tag.contains(NBT_RECRUIT_OWNER_UUID)) {
-            try {
-                this.entityData.set(RECRUIT_OWNER_UUID, UUID.fromString(tag.getString(NBT_RECRUIT_OWNER_UUID)).toString());
-            } catch (Exception ignored) {
-                this.entityData.set(RECRUIT_OWNER_UUID, "");
-            }
+            this.entityData.set(RECRUIT_OWNER_UUID, Maybe.ofNullable(tag.getString(NBT_RECRUIT_OWNER_UUID))
+                    .filter(raw -> !raw.isBlank())
+                    .flatMap(raw -> Attempts.maybe(() -> UUID.fromString(raw)))
+                    .map(UUID::toString)
+                    .orElse(""));
         }
         this.survivorFood.readAdditionalSaveData(tag);
         if (tag.contains(NBT_PATROL_MODE, Tag.TAG_STRING)) {
@@ -700,7 +694,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
             return;
         }
 
-        Optional<ResourceLocation> profIdOpt = getProfessionId();
+        Maybe<ResourceLocation> profIdOpt = getProfessionId();
         if (profIdOpt.isEmpty()) {
             this.offers = new MerchantOffers();
             this.offerReputationGains.clear();
@@ -886,8 +880,8 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
 
     private static boolean isTradeUnlocked(TradePoolDefinition.Trade trade, int reputation) {
         int required = trade.reputationRequirement();
-        if (trade.unlockCondition().isPresent()) {
-            required = Math.max(required, trade.unlockCondition().get().map(
+        if (trade.unlockRequirement().isDefined()) {
+            required = Math.max(required, trade.unlockRequirement().get().map(
                     v -> v,
                     tierName -> EosDatapackIndex.reputationTierByName(tierName)
                             .map(ReputationTiersDefinition.Tier::min)
@@ -899,7 +893,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
 
     private void ensureProfessionAssigned() {
         if (this.level().isClientSide) return;
-        if (getProfessionId().isPresent()) return;
+        if (getProfessionId().isDefined()) return;
 
         List<ProfessionDefinition> defs = DataManager.getDataList(ProfessionDefinition.class);
         if (defs.isEmpty()) return;
@@ -912,7 +906,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
 
     private void ensureSkinAssigned(ProfessionDefinition profession) {
         if (this.level().isClientSide) return;
-        if (getSkinUuid().isPresent()) return;
+        if (getSkinUuid().isDefined()) return;
         EosDatapackIndex.pickSkinProfile(this.getUUID()).ifPresent(this::setSkinProfile);
     }
 

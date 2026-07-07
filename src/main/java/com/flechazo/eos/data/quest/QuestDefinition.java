@@ -3,6 +3,8 @@ package com.flechazo.eos.data.quest;
 import cc.sighs.oelib.data.api.DataDriven;
 import cc.sighs.oelib.data.api.DataValidator;
 import com.flechazo.eos.data.common.TextKey;
+import com.flechazo.hkt.Maybe;
+import com.flechazo.hkt.business.util.OptionalOps;
 import com.mojang.datafixers.util.Either;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
@@ -43,6 +45,10 @@ public record QuestDefinition(
     public static final ResourceLocation TYPE_SUBMIT_ITEMS = ResourceLocation.fromNamespaceAndPath("echoes", "submit_items");
     public static final ResourceLocation TYPE_KILL_ENTITIES = ResourceLocation.fromNamespaceAndPath("echoes", "kill_entities");
 
+    public Maybe<Either<Integer, String>> reputationGate() {
+        return OptionalOps.toMaybe(requireReputation);
+    }
+
     public record Objective(
             Optional<ResourceLocation> item,
             Optional<ResourceLocation> entity,
@@ -55,6 +61,14 @@ public record QuestDefinition(
                         Codec.INT.optionalFieldOf("count", 1).forGetter(Objective::count)
                 ).apply(instance, Objective::new)
         );
+
+        public Maybe<ResourceLocation> itemTarget() {
+            return OptionalOps.toMaybe(item);
+        }
+
+        public Maybe<ResourceLocation> entityTarget() {
+            return OptionalOps.toMaybe(entity);
+        }
     }
 
     public record Rewards(
@@ -85,17 +99,17 @@ public record QuestDefinition(
 
             for (Objective obj : data.objectives) {
                 if (obj == null) return ValidationResult.failure("objective is null");
-                boolean hasItem = obj.item().isPresent();
-                boolean hasEntity = obj.entity().isPresent();
+                boolean hasItem = obj.itemTarget().isDefined();
+                boolean hasEntity = obj.entityTarget().isDefined();
                 if (hasItem == hasEntity) {
                     return ValidationResult.failure("objective must have exactly one of 'item' or 'entity'");
                 }
                 if (obj.count() <= 0) {
                     return ValidationResult.failure("objective 'count' must be > 0");
                 }
-                if (submit && obj.item().isEmpty())
+                if (submit && obj.itemTarget().isEmpty())
                     return ValidationResult.failure("submit_items objective requires 'item'");
-                if (kill && obj.entity().isEmpty())
+                if (kill && obj.entityTarget().isEmpty())
                     return ValidationResult.failure("kill_entities objective requires 'entity'");
             }
 

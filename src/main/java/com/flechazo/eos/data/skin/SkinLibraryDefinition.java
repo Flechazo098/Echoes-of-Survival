@@ -2,6 +2,7 @@ package com.flechazo.eos.data.skin;
 
 import cc.sighs.oelib.data.api.DataDriven;
 import cc.sighs.oelib.data.api.DataValidator;
+import com.flechazo.hkt.Maybe;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.resources.ResourceLocation;
@@ -30,10 +31,10 @@ public record SkinLibraryDefinition(
             SkinEntry.CODEC.listOf().fieldOf("skins").forGetter(SkinLibraryDefinition::skins)
     ).apply(instance, SkinLibraryDefinition::new));
 
-    public Optional<SkinEntry> pick(UUID seed) {
-        if (skins == null || skins.isEmpty() || seed == null) return Optional.empty();
+    public Maybe<SkinEntry> pick(UUID seed) {
+        if (skins == null || skins.isEmpty() || seed == null) return Maybe.none();
         int idx = Math.floorMod(seed.hashCode(), skins.size());
-        return Optional.ofNullable(skins.get(idx));
+        return Maybe.ofNullable(skins.get(idx));
     }
 
     public record SkinEntry(

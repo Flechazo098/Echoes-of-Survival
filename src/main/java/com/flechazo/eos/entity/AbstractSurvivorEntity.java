@@ -3,6 +3,8 @@ package com.flechazo.eos.entity;
 import com.flechazo.eos.data.EosDatapackIndex;
 import com.flechazo.eos.data.trade.ProfessionDefinition;
 import com.flechazo.eos.entity.ai.goal.SurvivorAiUtil;
+import com.flechazo.hkt.Maybe;
+import com.flechazo.hkt.business.core.Attempts;
 import com.mrbysco.nbt.network.message.AddBubblePayload;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
@@ -33,7 +35,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 public abstract class AbstractSurvivorEntity extends WanderingTrader
@@ -74,14 +75,10 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
     }
 
 
-    public Optional<UUID> getSkinUuid() {
-        String raw = this.entityData.get(SKIN_UUID);
-        if (raw.isBlank()) return Optional.empty();
-        try {
-            return Optional.of(UUID.fromString(raw));
-        } catch (Exception ignored) {
-            return Optional.empty();
-        }
+    public Maybe<UUID> getSkinUuid() {
+        return Maybe.ofNullable(this.entityData.get(SKIN_UUID))
+                .filter(raw -> !raw.isBlank())
+                .flatMap(raw -> Attempts.maybe(() -> UUID.fromString(raw)));
     }
 
     public void setSkinUuid(@Nullable UUID uuid) {
@@ -91,10 +88,8 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
         }
     }
 
-    public Optional<String> getSkinUsername() {
-        String raw = this.entityData.get(SKIN_USERNAME);
-        if (raw == null || raw.isBlank()) return Optional.empty();
-        return Optional.of(raw);
+    public Maybe<String> getSkinUsername() {
+        return Maybe.ofNullable(this.entityData.get(SKIN_USERNAME)).filter(raw -> !raw.isBlank());
     }
 
     public void setSkinUsername(@Nullable String username) {
@@ -107,13 +102,13 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
             setSkinUsername(null);
             return;
         }
-        setSkinUuid(profile.uuid().orElse(null));
+        setSkinUuid(profile.uuid().fold(() -> null, uuid -> uuid));
         setSkinUsername(profile.name());
     }
 
     protected void ensureSkinUsernameAssigned() {
         if (this.level().isClientSide) return;
-        if (getSkinUsername().isPresent()) return;
+        if (getSkinUsername().isDefined()) return;
         getSkinUuid()
                 .flatMap(EosDatapackIndex::skinLibraryUsername)
                 .ifPresent(this::setSkinUsername);
@@ -121,14 +116,14 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
 
     protected void ensureSkinAssigned() {
         if (this.level().isClientSide) return;
-        if (getSkinUuid().isPresent()) return;
+        if (getSkinUuid().isDefined()) return;
         EosDatapackIndex.pickSkinProfile(this.getUUID()).ifPresent(this::setSkinProfile);
     }
 
-    public Optional<ResourceLocation> getProfessionId() {
-        String raw = this.entityData.get(PROFESSION_ID);
-        if (raw.isBlank()) return Optional.empty();
-        return Optional.ofNullable(ResourceLocation.tryParse(raw));
+    public Maybe<ResourceLocation> getProfessionId() {
+        return Maybe.ofNullable(this.entityData.get(PROFESSION_ID))
+                .filter(raw -> !raw.isBlank())
+                .flatMap(raw -> Maybe.ofNullable(ResourceLocation.tryParse(raw)));
     }
 
     public void setProfessionId(ResourceLocation id) {
@@ -140,7 +135,7 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
         Component name = getSkinUsername()
                 .<Component>map(Component::literal)
                 .orElseGet(super::getDisplayName);
-        Optional<ResourceLocation> professionId = getProfessionId();
+        Maybe<ResourceLocation> professionId = getProfessionId();
         if (professionId.isEmpty()) {
             return name;
         }
@@ -168,9 +163,8 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
     }
 
     protected void ensureSkinAssigned(@Nullable Object professionOrNull) {
-        if (getSkinUuid().isPresent()) return;
-        if (professionOrNull instanceof ProfessionDefinition prof
-                && prof.skin() != null && prof.skin().isPresent()) return;
+        if (getSkinUuid().isDefined()) return;
+        if (professionOrNull instanceof ProfessionDefinition prof && prof.skinLibrary().isDefined()) return;
         ensureSkinAssigned();
     }
 
@@ -219,17 +213,19 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
     public void readAdditionalSaveData(CompoundTag tag) {
         super.readAdditionalSaveData(tag);
         if (tag.contains(NBT_SKIN_UUID)) {
-            try {
-                setSkinUuid(UUID.fromString(tag.getString(NBT_SKIN_UUID)));
-            } catch (Exception ignored) {
-            }
+            Maybe.ofNullable(tag.getString(NBT_SKIN_UUID))
+                    .filter(raw -> !raw.isBlank())
+                    .flatMap(raw -> Attempts.maybe(() -> UUID.fromString(raw)))
+                    .ifPresent(this::setSkinUuid);
         }
         if (tag.contains(NBT_SKIN_USERNAME)) {
             setSkinUsername(tag.getString(NBT_SKIN_USERNAME));
         }
         if (tag.contains(NBT_PROFESSION_ID)) {
-            ResourceLocation id = ResourceLocation.tryParse(tag.getString(NBT_PROFESSION_ID));
-            if (id != null) setProfessionId(id);
+            Maybe.ofNullable(tag.getString(NBT_PROFESSION_ID))
+                    .filter(raw -> !raw.isBlank())
+                    .flatMap(raw -> Maybe.ofNullable(ResourceLocation.tryParse(raw)))
+                    .ifPresent(this::setProfessionId);
         }
         if (tag.contains(NBT_TACTICAL, Tag.TAG_COMPOUND)) {
             tacticalInventory.deserializeNBT(this.registryAccess(), tag.getCompound(NBT_TACTICAL));
@@ -252,7 +248,7 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
     }
 
     protected void applyProfessionEquipment(ProfessionDefinition prof) {
-        prof.initialEquipment().armorSet().ifPresent(this::applyArmorSet);
+        prof.initialEquipment().armorSetId().ifPresent(this::applyArmorSet);
         for (ItemStack stack : prof.initialEquipment().tacticalItems()) {
             if (stack.isEmpty()) continue;
             var copy = stack.copy();

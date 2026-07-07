@@ -2,21 +2,21 @@ package com.flechazo.eos.reputation;
 
 import com.flechazo.eos.data.EosDatapackIndex;
 import com.flechazo.eos.data.reputation.ReputationTiersDefinition;
+import com.flechazo.hkt.Maybe;
 
 import java.util.Map;
-import java.util.Optional;
 
 public final class ReputationTiers {
     private ReputationTiers() {
     }
 
-    public static Optional<Map.Entry<String, ReputationTiersDefinition.Tier>> tierForValue(int reputation) {
+    public static Maybe<Map.Entry<String, ReputationTiersDefinition.Tier>> tierForValue(int reputation) {
         Map.Entry<String, ReputationTiersDefinition.Tier> lowest = null;
         Map.Entry<String, ReputationTiersDefinition.Tier> highest = null;
         for (Map.Entry<String, ReputationTiersDefinition.Tier> entry : EosDatapackIndex.reputationTiers()) {
             ReputationTiersDefinition.Tier tier = entry.getValue();
             if (reputation >= tier.min() && reputation <= tier.max()) {
-                return Optional.of(entry);
+                return Maybe.some(entry);
             }
             if (lowest == null || tier.min() < lowest.getValue().min()) {
                 lowest = entry;
@@ -26,12 +26,12 @@ public final class ReputationTiers {
             }
         }
         if (highest != null && reputation > highest.getValue().max()) {
-            return Optional.of(highest);
+            return Maybe.some(highest);
         }
         if (lowest != null && reputation < lowest.getValue().min()) {
-            return Optional.of(lowest);
+            return Maybe.some(lowest);
         }
-        return Optional.empty();
+        return Maybe.none();
     }
 
     public static double priceMultiplier(int reputation) {

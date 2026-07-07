@@ -265,9 +265,9 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
         return questId -> {
             QuestDefinition def = EosDatapackIndex.quest(questId).orElse(null);
             if (def == null) return false;
-            if (def.requireReputation().isEmpty()) return true;
+            if (def.reputationGate().isEmpty()) return true;
 
-            int required = def.requireReputation().get().map(
+            int required = def.reputationGate().get().map(
                     value -> value,
                     tier -> EosDatapackIndex.reputationTierByName(tier)
                             .map(ReputationTiersDefinition.Tier::min)

@@ -1,26 +1,25 @@
 package com.flechazo.eos.client.render;
 
 import com.flechazo.eos.data.EosDatapackIndex;
+import com.flechazo.hkt.Maybe;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
-
-import java.util.Optional;
 
 public record SurvivorPlayerSkin(
         ResourceLocation texture,
         boolean slim,
-        Optional<ResourceLocation> cape,
-        Optional<ResourceLocation> elytra
+        Maybe<ResourceLocation> cape,
+        Maybe<ResourceLocation> elytra
 ) {
     public static SurvivorPlayerSkin wide(ResourceLocation texture) {
-        return new SurvivorPlayerSkin(texture, false, Optional.empty(), Optional.empty());
+        return new SurvivorPlayerSkin(texture, false, Maybe.none(), Maybe.none());
     }
 
-    public static Optional<SurvivorPlayerSkin> fromLocalProfile(EosDatapackIndex.SkinProfile profile) {
+    public static Maybe<SurvivorPlayerSkin> fromLocalProfile(EosDatapackIndex.SkinProfile profile) {
         if (profile == null || profile.texture().isEmpty()) {
-            return Optional.empty();
+            return Maybe.none();
         }
-        return Optional.of(new SurvivorPlayerSkin(
+        return Maybe.some(new SurvivorPlayerSkin(
                 profile.texture().get(),
                 profile.slim(),
                 profile.cape(),
@@ -43,8 +42,8 @@ public record SurvivorPlayerSkin(
         return new SurvivorPlayerSkin(
                 texture,
                 slim,
-                Optional.ofNullable(cape),
-                Optional.ofNullable(elytra)
+                Maybe.ofNullable(cape),
+                Maybe.ofNullable(elytra)
         );
     }
 }

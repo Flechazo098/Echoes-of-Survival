@@ -37,9 +37,9 @@ public final class QuestApi {
             if (completions >= def.maxRepeats()) return false;
         }
 
-        if (def.requireReputation().isPresent()) {
+        if (def.reputationGate().isDefined()) {
             int rep = ReputationApi.get(player);
-            int required = def.requireReputation().get().map(
+            int required = def.reputationGate().get().map(
                     v -> v,
                     tierName -> EosDatapackIndex.reputationTierByName(tierName)
                             .map(ReputationTiersDefinition.Tier::min)
@@ -125,8 +125,8 @@ public final class QuestApi {
             boolean progressChanged = false;
             for (int i = 0; i < def.objectives().size(); i++) {
                 QuestDefinition.Objective obj = def.objectives().get(i);
-                if (obj == null || obj.entity().isEmpty()) continue;
-                ResourceLocation required = EosAliases.normalizeToModNamespace(obj.entity().get());
+                if (obj == null || obj.entityTarget().isEmpty()) continue;
+                ResourceLocation required = EosAliases.normalizeToModNamespace(obj.entityTarget().get());
                 if (!required.equals(killedType)) continue;
 
                 int current = objectiveProgress.get(i);
@@ -165,16 +165,16 @@ public final class QuestApi {
         Inventory inv = player.getInventory();
 
         for (QuestDefinition.Objective obj : def.objectives()) {
-            if (obj == null || obj.item().isEmpty()) continue;
-            ResourceLocation itemId = obj.item().get();
+            if (obj == null || obj.itemTarget().isEmpty()) continue;
+            ResourceLocation itemId = obj.itemTarget().get();
             Item item = BuiltInRegistries.ITEM.getOptional(itemId).orElse(null);
             if (item == null) return false;
             if (countItem(inv, item) < obj.count()) return false;
         }
 
         for (QuestDefinition.Objective obj : def.objectives()) {
-            if (obj == null || obj.item().isEmpty()) continue;
-            ResourceLocation itemId = obj.item().get();
+            if (obj == null || obj.itemTarget().isEmpty()) continue;
+            ResourceLocation itemId = obj.itemTarget().get();
             Item item = BuiltInRegistries.ITEM.getOptional(itemId).orElse(null);
             if (item == null) continue;
             removeItem(inv, item, obj.count());
@@ -183,7 +183,7 @@ public final class QuestApi {
         List<Integer> objectiveProgress = new ArrayList<>(Collections.nCopies(def.objectives().size(), 0));
         for (int i = 0; i < def.objectives().size(); i++) {
             QuestDefinition.Objective obj = def.objectives().get(i);
-            if (obj != null && obj.item().isPresent()) {
+            if (obj != null && obj.itemTarget().isDefined()) {
                 objectiveProgress.set(i, obj.count());
             }
         }

@@ -6,10 +6,10 @@ import com.flechazo.hkt.Either;
 import com.flechazo.hkt.Maybe;
 import com.flechazo.hkt.Unit;
 import com.flechazo.hkt.Validated;
-import com.flechazo.hkt.business.Attempts;
-import com.flechazo.hkt.business.NonEmptyList;
-import com.flechazo.hkt.business.Task;
-import com.flechazo.hkt.business.ValidatedNel;
+import com.flechazo.hkt.business.control.ValidatedNel;
+import com.flechazo.hkt.business.core.Attempts;
+import com.flechazo.hkt.business.data.NonEmptyList;
+import com.flechazo.hkt.business.effect.Task;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -31,7 +31,6 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -63,12 +62,12 @@ public final class MojangSkinCache {
     private static Validated<NonEmptyList<UUID>, Unit> failed = Validated.valid(Unit.INSTANCE);
     private static boolean retryScheduled;
 
-    public static Optional<SurvivorPlayerSkin> getOrRequest(UUID uuid) {
-        if (uuid == null) return Optional.empty();
+    public static Maybe<SurvivorPlayerSkin> getOrRequest(UUID uuid) {
+        if (uuid == null) return Maybe.none();
         SurvivorPlayerSkin existing = LOADED.get(uuid);
-        if (existing != null) return Optional.of(existing);
+        if (existing != null) return Maybe.some(existing);
         request(uuid);
-        return Optional.empty();
+        return Maybe.none();
     }
 
     private static void request(UUID uuid) {

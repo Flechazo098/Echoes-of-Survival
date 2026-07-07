@@ -77,7 +77,7 @@ public abstract class SurvivorPlayerRenderer<T extends AbstractSurvivorEntity> e
 
     @Override
     protected boolean shouldShowName(T entity) {
-        return entity.getProfessionId().isPresent() || super.shouldShowName(entity);
+        return entity.getProfessionId().isDefined() || super.shouldShowName(entity);
     }
 
     protected abstract SurvivorPlayerSkin skin(T entity);

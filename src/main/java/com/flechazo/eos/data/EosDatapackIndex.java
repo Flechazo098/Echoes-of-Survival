@@ -12,6 +12,9 @@ import com.flechazo.eos.data.reputation.ReputationTiersDefinition;
 import com.flechazo.eos.data.skin.SkinLibraryDefinition;
 import com.flechazo.eos.data.trade.ProfessionDefinition;
 import com.flechazo.eos.data.trade.TradePoolDefinition;
+import com.flechazo.hkt.Maybe;
+import com.flechazo.hkt.business.core.Pathway;
+import com.flechazo.hkt.business.util.OptionalOps;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -162,15 +165,14 @@ public final class EosDatapackIndex {
         healingPotionPatterns = List.copyOf(list);
     }
 
-    public static Optional<ProfessionDefinition> profession(ResourceLocation id) {
-        return Optional.ofNullable(professionsById.get(id));
+    public static Maybe<ProfessionDefinition> profession(ResourceLocation id) {
+        return Maybe.ofNullable(professionsById.get(id));
     }
 
-    public static Optional<ProfessionDefinition> randomProfession() {
-        if (professionsById.isEmpty()) return Optional.empty();
+    public static Maybe<ProfessionDefinition> randomProfession() {
+        if (professionsById.isEmpty()) return Maybe.none();
         int idx = (int) (Math.random() * professionsById.size());
-        var list = professionsById.values().stream().toList();
-        return idx >= 0 && idx < list.size() ? Optional.of(list.get(idx)) : Optional.empty();
+        return Pathway.listPath(professionsById.values().stream().toList()).get(idx).run();
     }
 
     public static boolean matches(ItemStack stack) {
@@ -200,16 +202,16 @@ public final class EosDatapackIndex {
         return false;
     }
 
-    public static Optional<QuestDefinition> quest(ResourceLocation id) {
-        return Optional.ofNullable(questsById.get(id));
+    public static Maybe<QuestDefinition> quest(ResourceLocation id) {
+        return Maybe.ofNullable(questsById.get(id));
     }
 
-    public static Optional<QuestPoolDefinition> questPool(ResourceLocation id) {
-        return Optional.ofNullable(questPoolsByFileId.get(id));
+    public static Maybe<QuestPoolDefinition> questPool(ResourceLocation id) {
+        return Maybe.ofNullable(questPoolsByFileId.get(id));
     }
 
-    public static Optional<ArmorSetDefinition> armorSet(ResourceLocation id) {
-        return Optional.ofNullable(armorSetsByFileId.get(id));
+    public static Maybe<ArmorSetDefinition> armorSet(ResourceLocation id) {
+        return Maybe.ofNullable(armorSetsByFileId.get(id));
     }
 
     public static List<TradePoolDefinition> tradePools(ResourceLocation professionId, List<ResourceLocation> requestedPoolIds) {
@@ -255,61 +257,61 @@ public final class EosDatapackIndex {
         return List.copyOf(result);
     }
 
-    public static Optional<ReputationTiersDefinition.Tier> reputationTierByName(String name) {
-        return Optional.ofNullable(reputationTierByName.get(name));
+    public static Maybe<ReputationTiersDefinition.Tier> reputationTierByName(String name) {
+        return Maybe.ofNullable(reputationTierByName.get(name));
     }
 
     public static List<Map.Entry<String, ReputationTiersDefinition.Tier>> reputationTiers() {
         return reputationTiers;
     }
 
-    public static Optional<ReputationEventsDefinition.ReputationEvent> reputationEvent(String id) {
-        return Optional.ofNullable(reputationEventById.get(id));
+    public static Maybe<ReputationEventsDefinition.ReputationEvent> reputationEvent(String id) {
+        return Maybe.ofNullable(reputationEventById.get(id));
     }
 
     public static List<UUID> skinLibraryUuids() {
-        return skinLibraryProfiles.stream().flatMap(profile -> profile.uuid().stream()).toList();
+        return skinLibraryProfiles.stream().flatMap(profile -> profile.uuid().toList().stream()).toList();
     }
 
     public static List<SkinProfile> skinLibraryProfiles() {
         return skinLibraryProfiles;
     }
 
-    public static Optional<SkinProfile> pickSkinProfile(UUID seed) {
-        if (seed == null || skinLibraryProfiles.isEmpty()) return Optional.empty();
+    public static Maybe<SkinProfile> pickSkinProfile(UUID seed) {
+        if (seed == null || skinLibraryProfiles.isEmpty()) return Maybe.none();
         int idx = Math.floorMod(seed.hashCode(), skinLibraryProfiles.size());
-        return Optional.of(skinLibraryProfiles.get(idx));
+        return Pathway.listPath(skinLibraryProfiles).get(idx).run();
     }
 
-    public static Optional<SkinProfile> pickSkinProfile(ResourceLocation library, UUID seed) {
-        if (library == null || seed == null) return Optional.empty();
+    public static Maybe<SkinProfile> pickSkinProfile(ResourceLocation library, UUID seed) {
+        if (library == null || seed == null) return Maybe.none();
         List<SkinProfile> profiles = skinProfilesByLibrary.getOrDefault(library, List.of());
-        if (profiles.isEmpty()) return Optional.empty();
+        if (profiles.isEmpty()) return Maybe.none();
         int idx = Math.floorMod(seed.hashCode(), profiles.size());
-        return Optional.of(profiles.get(idx));
+        return Pathway.listPath(profiles).get(idx).run();
     }
 
-    public static Optional<String> skinLibraryUsername(UUID uuid) {
-        if (uuid == null) return Optional.empty();
-        return Optional.ofNullable(skinLibraryUsernamesByUuid.get(uuid));
+    public static Maybe<String> skinLibraryUsername(UUID uuid) {
+        if (uuid == null) return Maybe.none();
+        return Maybe.ofNullable(skinLibraryUsernamesByUuid.get(uuid));
     }
 
     public record SkinProfile(
             String name,
-            Optional<UUID> uuid,
-            Optional<ResourceLocation> texture,
-            Optional<String> model,
-            Optional<ResourceLocation> cape,
-            Optional<ResourceLocation> elytra
+            Maybe<UUID> uuid,
+            Maybe<ResourceLocation> texture,
+            Maybe<String> model,
+            Maybe<ResourceLocation> cape,
+            Maybe<ResourceLocation> elytra
     ) {
         private static SkinProfile from(SkinLibraryDefinition.SkinEntry entry) {
             return new SkinProfile(
                     entry.name().trim(),
-                    entry.uuid(),
-                    entry.texture(),
-                    entry.model(),
-                    entry.cape(),
-                    entry.elytra());
+                    OptionalOps.toMaybe(entry.uuid()),
+                    OptionalOps.toMaybe(entry.texture()),
+                    OptionalOps.toMaybe(entry.model()),
+                    OptionalOps.toMaybe(entry.cape()),
+                    OptionalOps.toMaybe(entry.elytra()));
         }
 
         public boolean slim() {

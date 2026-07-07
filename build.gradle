@@ -119,11 +119,21 @@ repositories {
 
 dependencies {
     implementation "cc.sighs.oelib:OELib-neoforge-1.21.1:0.2.3"
-    implementation files('libs/optics-java-1.0-SNAPSHOT.jar')
-    additionalRuntimeClasspath files('libs/optics-java-1.0-SNAPSHOT.jar')
+    implementation('com.flechazo:optics-java:1.0-beta') {
+        exclude group: 'it.unimi.dsi', module: 'fastutil'
+        exclude group: 'com.google.guava', module: 'guava'
+    }
+    additionalRuntimeClasspath ('com.flechazo:optics-java:1.0-beta') {
+        exclude group: 'it.unimi.dsi', module: 'fastutil'
+        exclude group: 'com.google.guava', module: 'guava'
+    }
+
     implementation("io.smallrye.classfile:jdk-classfile-backport:26")
     additionalRuntimeClasspath("io.smallrye.classfile:jdk-classfile-backport:26")
-    jarJar files('libs/optics-java-1.0-SNAPSHOT.jar')
+    jarJar ('com.flechazo:optics-java:1.0-beta') {
+        exclude group: 'it.unimi.dsi', module: 'fastutil'
+        exclude group: 'com.google.guava', module: 'guava'
+    }
     jarJar('io.smallrye.classfile:jdk-classfile-backport:26')
     implementation "curse.maven:sodium-394468:8143565"
     implementation "curse.maven:nbt-938890:6307058"

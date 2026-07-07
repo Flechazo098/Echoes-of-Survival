@@ -401,9 +401,9 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
     }
 
     private Component objectiveText(QuestDefinition.Objective objective, int progress) {
-        String target = objective.item()
+        String target = objective.itemTarget()
                 .map(this::itemName)
-                .orElseGet(() -> objective.entity().map(this::entityName).orElse("?"));
+                .orElseGet(() -> objective.entityTarget().map(this::entityName).orElse("?"));
         return Component.translatable("gui.echoes_of_survival.quest.objective_line", target, Math.min(progress, objective.count()), objective.count());
     }
 
@@ -439,8 +439,8 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
     }
 
     private int reputationRequirementValue(QuestDefinition quest) {
-        if (quest.requireReputation().isEmpty()) return 0;
-        return quest.requireReputation().get().map(
+        if (quest.reputationGate().isEmpty()) return 0;
+        return quest.reputationGate().get().map(
                 value -> value,
                 tier -> EosDatapackIndex.reputationTierByName(tier)
                         .map(ReputationTiersDefinition.Tier::min)
@@ -449,10 +449,10 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
     }
 
     private boolean meetsReputationRequirement(QuestDefinition quest) {
-        if (quest == null || quest.requireReputation().isEmpty()) {
+        if (quest == null || quest.reputationGate().isEmpty()) {
             return true;
         }
-        int required = quest.requireReputation().get().map(
+        int required = quest.reputationGate().get().map(
                 value -> value,
                 tier -> EosDatapackIndex.reputationTierByName(tier)
                         .map(ReputationTiersDefinition.Tier::min)
@@ -463,8 +463,8 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
 
     private boolean hasSubmissionItems(QuestDefinition quest) {
         for (QuestDefinition.Objective objective : quest.objectives()) {
-            if (objective.item().isEmpty()) continue;
-            Optional<Item> item = BuiltInRegistries.ITEM.getOptional(objective.item().get());
+            if (objective.itemTarget().isEmpty()) continue;
+            Optional<Item> item = BuiltInRegistries.ITEM.getOptional(objective.itemTarget().get());
             if (item.isEmpty()) return false;
             if (countItem(item.get()) < objective.count()) return false;
         }

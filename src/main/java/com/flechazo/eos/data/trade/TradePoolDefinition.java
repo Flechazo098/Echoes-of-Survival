@@ -2,6 +2,8 @@ package com.flechazo.eos.data.trade;
 
 import cc.sighs.oelib.data.api.DataDriven;
 import cc.sighs.oelib.data.api.DataValidator;
+import com.flechazo.hkt.Maybe;
+import com.flechazo.hkt.business.util.OptionalOps;
 import com.mojang.datafixers.util.Either;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
@@ -41,6 +43,10 @@ public record TradePoolDefinition(
                 Codec.INT.optionalFieldOf("reputation_requirement", 0).forGetter(Trade::reputationRequirement),
                 Codec.either(Codec.INT, Codec.STRING).optionalFieldOf("unlock_condition").forGetter(Trade::unlockCondition)
         ).apply(instance, Trade::new));
+
+        public Maybe<Either<Integer, String>> unlockRequirement() {
+            return OptionalOps.toMaybe(unlockCondition);
+        }
     }
 
     public static final class Validator implements DataValidator<TradePoolDefinition> {
