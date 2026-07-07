@@ -100,6 +100,10 @@ repositories {
         url = "https://maven.sighs.cc/repository/maven-releases/"
     }
     maven {
+        name = "Tower of Sighs"
+        url = "https://maven.sighs.cc/repository/maven-snapshots/"
+    }
+    maven {
         name = "Jared's maven"
         url = "https://maven.blamejared.com/"
     }
@@ -115,6 +119,12 @@ repositories {
 
 dependencies {
     implementation "cc.sighs.oelib:OELib-neoforge-1.21.1:0.2.3"
+    implementation files('libs/optics-java-1.0-SNAPSHOT.jar')
+    additionalRuntimeClasspath files('libs/optics-java-1.0-SNAPSHOT.jar')
+    implementation("io.smallrye.classfile:jdk-classfile-backport:26")
+    additionalRuntimeClasspath("io.smallrye.classfile:jdk-classfile-backport:26")
+    jarJar files('libs/optics-java-1.0-SNAPSHOT.jar')
+    jarJar('io.smallrye.classfile:jdk-classfile-backport:26')
     implementation "curse.maven:sodium-394468:8143565"
     implementation "curse.maven:nbt-938890:6307058"
     implementation "curse.maven:superb-warfare-1218165:8104860"

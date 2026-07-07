@@ -1,6 +1,6 @@
 package com.flechazo.eos.client.render;
 
-import com.flechazo.eos.data.trade.ProfessionDefinition;
+import com.flechazo.eos.data.EosDatapackIndex;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -16,13 +16,22 @@ public record SurvivorPlayerSkin(
         return new SurvivorPlayerSkin(texture, false, Optional.empty(), Optional.empty());
     }
 
-    public static SurvivorPlayerSkin fromDefinition(ProfessionDefinition.SkinDefinition definition) {
-        return new SurvivorPlayerSkin(
-                definition.texture(),
-                definition.slim(),
-                definition.cape(),
-                definition.elytra()
-        );
+    public static Optional<SurvivorPlayerSkin> fromLocalProfile(EosDatapackIndex.SkinProfile profile) {
+        if (profile == null || profile.texture().isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(new SurvivorPlayerSkin(
+                profile.texture().get(),
+                profile.slim(),
+                profile.cape(),
+                profile.elytra()
+        ));
+    }
+
+    public static SurvivorPlayerSkin fromProfile(EosDatapackIndex.SkinProfile profile, SurvivorPlayerSkin mojang) {
+        return mojang != null
+                ? mojang
+                : fromLocalProfile(profile).orElse(null);
     }
 
     public static SurvivorPlayerSkin fromMojang(

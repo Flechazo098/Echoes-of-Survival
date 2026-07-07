@@ -2,7 +2,6 @@ package com.flechazo.eos.client.render;
 
 import com.flechazo.eos.client.skin.MojangSkinCache;
 import com.flechazo.eos.data.EosDatapackIndex;
-import com.flechazo.eos.data.trade.ProfessionDefinition;
 import com.flechazo.eos.entity.NeutralSurvivorEntity;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.resources.ResourceLocation;
@@ -17,6 +16,16 @@ public class NeutralSurvivorRenderer extends SurvivorPlayerRenderer<NeutralSurvi
 
     @Override
     protected SurvivorPlayerSkin skin(NeutralSurvivorEntity entity) {
+        SurvivorPlayerSkin professionSkin = entity.getProfessionId()
+                .flatMap(EosDatapackIndex::profession)
+                .flatMap(profession -> profession.neutralSkin()
+                        .flatMap(library -> EosDatapackIndex.pickSkinProfile(library, entity.getUUID())))
+                .map(NeutralSurvivorRenderer::fromProfile)
+                .orElse(null);
+        if (professionSkin != null) {
+            return professionSkin;
+        }
+
         SurvivorPlayerSkin mojang = entity.getSkinUuid()
                 .flatMap(MojangSkinCache::getOrRequest)
                 .orElse(null);
@@ -24,14 +33,15 @@ public class NeutralSurvivorRenderer extends SurvivorPlayerRenderer<NeutralSurvi
             return mojang;
         }
 
-        SurvivorPlayerSkin forced = entity.getProfessionId()
-                .flatMap(EosDatapackIndex::profession)
-                .flatMap(ProfessionDefinition::neutralSkin)
-                .map(SurvivorPlayerSkin::fromDefinition)
-                .orElse(null);
-        if (forced != null) {
-            return forced;
-        }
         return SurvivorPlayerSkin.wide(SurvivorSkins.pick(entity.getUUID(), SurvivorSkins.PRESET_POOL, TEXTURE));
+    }
+
+    private static SurvivorPlayerSkin fromProfile(EosDatapackIndex.SkinProfile profile) {
+        SurvivorPlayerSkin mojang = profile.uuid()
+                .flatMap(MojangSkinCache::getOrRequest)
+                .orElse(null);
+        return mojang != null
+                ? mojang
+                : SurvivorPlayerSkin.fromLocalProfile(profile).orElse(null);
     }
 }

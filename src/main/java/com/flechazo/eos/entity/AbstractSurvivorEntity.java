@@ -107,8 +107,8 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
             setSkinUsername(null);
             return;
         }
-        setSkinUuid(profile.uuid());
-        setSkinUsername(profile.username());
+        setSkinUuid(profile.uuid().orElse(null));
+        setSkinUsername(profile.name());
     }
 
     protected void ensureSkinUsernameAssigned() {

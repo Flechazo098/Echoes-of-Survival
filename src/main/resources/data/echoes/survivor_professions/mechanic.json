@@ -1,5 +1,8 @@
 {
   "id": "echoes:mechanic",
+  "skin": "echoes:default",
+  "hostile_skin": "echoes:default",
+  "neutral_skin": "echoes:default",
   "initial_equipment": {
     "armor_set": "echoes:scavenger_tier_1",
     "tactical_items": [

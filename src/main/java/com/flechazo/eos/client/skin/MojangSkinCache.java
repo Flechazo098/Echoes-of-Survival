@@ -2,6 +2,14 @@ package com.flechazo.eos.client.skin;
 
 import com.flechazo.eos.EchoesofSurvival;
 import com.flechazo.eos.client.render.SurvivorPlayerSkin;
+import com.flechazo.hkt.Either;
+import com.flechazo.hkt.Maybe;
+import com.flechazo.hkt.Unit;
+import com.flechazo.hkt.Validated;
+import com.flechazo.hkt.business.Attempts;
+import com.flechazo.hkt.business.NonEmptyList;
+import com.flechazo.hkt.business.Task;
+import com.flechazo.hkt.business.ValidatedNel;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -16,28 +24,35 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Executors;
 
+// 此类用于测试 optics-java 的初步业务层 API
 public final class MojangSkinCache {
     private MojangSkinCache() {
     }
 
+    private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(60);
+    private static final Duration RETRY_DELAY = Duration.ofMinutes(5);
+
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
-            .connectTimeout(Duration.ofSeconds(5))
+            .connectTimeout(HTTP_TIMEOUT)
             .build();
 
-    private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(2, r -> {
+    private static final ScheduledExecutorService EXECUTOR = Executors.newScheduledThreadPool(2, r -> {
         Thread t = new Thread(r, "eos-mojang-skin");
         t.setDaemon(true);
         return t;
@@ -45,185 +60,295 @@ public final class MojangSkinCache {
 
     private static final ConcurrentHashMap<UUID, SurvivorPlayerSkin> LOADED = new ConcurrentHashMap<>();
     private static final Set<UUID> IN_FLIGHT = ConcurrentHashMap.newKeySet();
+    private static Validated<NonEmptyList<UUID>, Unit> failed = Validated.valid(Unit.INSTANCE);
+    private static boolean retryScheduled;
 
     public static Optional<SurvivorPlayerSkin> getOrRequest(UUID uuid) {
         if (uuid == null) return Optional.empty();
-
         SurvivorPlayerSkin existing = LOADED.get(uuid);
         if (existing != null) return Optional.of(existing);
-
         request(uuid);
         return Optional.empty();
     }
 
     private static void request(UUID uuid) {
-        if (uuid == null) return;
-        if (!IN_FLIGHT.add(uuid)) return;
-        CompletableFuture.runAsync(() -> {
-                    Path cacheFile = cacheFile(uuid);
-                    if (Files.isRegularFile(cacheFile)) {
-                        loadFromDisk(uuid);
-                        return;
-                    }
-                    try {
-                        fetchFromMojang(uuid, cacheFile).join();
-                    } catch (Exception ignored) {
-                    }
-                }, EXECUTOR)
-                .whenComplete((ok, err) -> IN_FLIGHT.remove(uuid));
+        if (uuid == null || !IN_FLIGHT.add(uuid)) return;
+        load(uuid)
+                .peekFailure(err -> recordFailure(uuid))
+                .unsafeRunAsync(EXECUTOR)
+                .whenComplete((ignored, err) -> {
+                    IN_FLIGHT.remove(uuid);
+                    scheduleRetryIfNeeded();
+                });
     }
 
-    private static CompletableFuture<Void> fetchFromMojang(UUID uuid, Path cacheFile) {
+    private static Task<Unit> load(UUID uuid) {
+        return readFromDisk(uuid)
+                .flatMap(cached -> cached.isDefined()
+                        ? registerDynamic(uuid, cached.get())
+                        : fetchFromMojang(uuid)
+                                .flatMap(assets -> writeToDisk(uuid, assets)
+                                        .recover(err -> Unit.INSTANCE)
+                                        .map(ignored -> assets))
+                                .flatMap(assets -> registerDynamic(uuid, assets)));
+    }
+
+    private static synchronized void recordFailure(UUID uuid) {
+        failed = failed.combine(ValidatedNel.invalid(uuid), NonEmptyList.semigroup());
+    }
+
+    private static void scheduleRetryIfNeeded() {
+        if (!IN_FLIGHT.isEmpty()) return;
+        synchronized (MojangSkinCache.class) {
+            if (retryScheduled || failed.isValid()) return;
+            List<UUID> pending = failed.error().toList();
+            if (pending.isEmpty()) return;
+            retryScheduled = true;
+            EchoesofSurvival.LOGGER.warn(
+                    "Mojang skin failed for {} UUID(s), retrying in 5 min: {}",
+                    pending.size(),
+                    pending);
+            EXECUTOR.schedule(MojangSkinCache::retryFailures, RETRY_DELAY.toMinutes(), TimeUnit.MINUTES);
+        }
+    }
+
+    private static void retryFailures() {
+        List<UUID> pending;
+        synchronized (MojangSkinCache.class) {
+            pending = failed.isInvalid() ? List.copyOf(new LinkedHashSet<>(failed.error().toList())) : List.of();
+            failed = Validated.valid(Unit.INSTANCE);
+            retryScheduled = false;
+        }
+        for (UUID uuid : pending) {
+            if (!LOADED.containsKey(uuid)) {
+                request(uuid);
+            }
+        }
+    }
+
+    private static Task<SkinAssets> fetchFromMojang(UUID uuid) {
         String id = uuid.toString().replace("-", "");
         String profileUrl = "https://sessionserver.mojang.com/session/minecraft/profile/" + id;
-
-        HttpRequest request = HttpRequest.newBuilder(URI.create(profileUrl))
-                .timeout(Duration.ofSeconds(12))
-                .GET()
-                .build();
-
-        return HTTP.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-                .thenApply(HttpResponse::body)
-                .thenApply(MojangSkinCache::extractTexturesFromProfileJson)
-                .thenAccept(textures -> {
-                    if (textures == null || textures.skinUrl() == null || textures.skinUrl().isBlank()) return;
-                    byte[] skinBytes = downloadBytes(textures.skinUrl()).join();
-                    if (skinBytes == null || skinBytes.length == 0) return;
-                    byte[] capeBytes = textures.capeUrl().isBlank() ? null : downloadBytes(textures.capeUrl()).join();
-                    byte[] elytraBytes = textures.elytraUrl().isBlank() ? null : downloadBytes(textures.elytraUrl()).join();
-                    try {
-                        Files.createDirectories(cacheFile.getParent());
-                        Files.write(cacheFile, skinBytes);
-                        Files.writeString(modelFile(uuid), textures.model());
-                        if (capeBytes != null && capeBytes.length > 0) {
-                            Files.write(capeFile(uuid), capeBytes);
-                        }
-                        if (elytraBytes != null && elytraBytes.length > 0) {
-                            Files.write(elytraFile(uuid), elytraBytes);
-                        }
-                    } catch (Exception ignored) {
-                    }
-                    registerDynamic(uuid, skinBytes, textures.model(), capeBytes, elytraBytes);
-                })
-                .exceptionally(err -> null);
+        return getString(profileUrl)
+                .flatMap(json -> extractTexturesFromProfileJson(json).fold(
+                        error -> Task.failed(new SkinLoadException(uuid, error)),
+                        textures -> downloadAssets(uuid, textures)));
     }
 
-    private static ProfileTextures extractTexturesFromProfileJson(String json) {
-        if (json == null || json.isBlank()) return null;
-        try {
-            JsonObject root = JsonParser.parseString(json).getAsJsonObject();
-            JsonArray props = root.getAsJsonArray("properties");
-            if (props == null) return null;
+    private static Task<SkinAssets> downloadAssets(UUID uuid, ProfileTextures textures) {
+        return downloadRequired(textures.skinUrl(), uuid, "skin")
+                .flatMap(skinBytes -> downloadOptional(textures.capeUrl())
+                        .parZipWith(downloadOptional(textures.elytraUrl()), (capeBytes, elytraBytes) -> new SkinAssets(
+                                skinBytes,
+                                textures.model(),
+                                capeBytes,
+                                elytraBytes)));
+    }
 
-            for (JsonElement el : props) {
-                if (el == null || !el.isJsonObject()) continue;
-                JsonObject obj = el.getAsJsonObject();
-                if (!obj.has("name") || !obj.has("value")) continue;
-                JsonElement nameEl = obj.get("name");
-                JsonElement valueEl = obj.get("value");
-                if (nameEl == null || valueEl == null) continue;
-                if (!"textures".equals(nameEl.getAsString())) continue;
-                String value = obj.get("value").getAsString();
-                if (value == null || value.isBlank()) continue;
+    private static Task<String> getString(String url) {
+        return Task.async(() -> HTTP.sendAsync(get(url), HttpResponse.BodyHandlers.ofString()))
+                .flatMap(response -> successful(response)
+                        ? Task.pure(response.body())
+                        : Task.failed(new IllegalStateException("HTTP " + response.statusCode() + " for " + url)));
+    }
 
-                String decoded = new String(Base64.getDecoder().decode(value), java.nio.charset.StandardCharsets.UTF_8);
-                JsonObject texturesRoot = JsonParser.parseString(decoded).getAsJsonObject();
-                JsonObject textures = texturesRoot.getAsJsonObject("textures");
-                if (textures == null) return null;
-                JsonObject skin = textures.getAsJsonObject("SKIN");
-                if (skin == null || !skin.has("url")) return null;
-
-                String model = "default";
-                JsonObject metadata = skin.getAsJsonObject("metadata");
-                if (metadata != null && metadata.has("model")) {
-                    model = metadata.get("model").getAsString();
-                }
-
-                JsonObject cape = textures.getAsJsonObject("CAPE");
-                JsonObject elytra = textures.getAsJsonObject("ELYTRA");
-                return new ProfileTextures(
-                        skin.get("url").getAsString(),
-                        model,
-                        textureUrl(cape),
-                        textureUrl(elytra)
-                );
-            }
-        } catch (Exception ignored) {
+    private static Task<byte[]> downloadRequired(String url, UUID uuid, String name) {
+        if (isBlank(url)) {
+            return Task.failed(new SkinLoadException(uuid, "missing " + name + " url"));
         }
-        return null;
+        return Task.async(() -> HTTP.sendAsync(get(url), HttpResponse.BodyHandlers.ofByteArray()))
+                .flatMap(response -> successful(response)
+                        ? Maybe.ofNullable(response.body()).filter(bytes -> bytes.length > 0)
+                                .toEither(() -> new SkinLoadException(uuid, "empty " + name + " data"))
+                                .fold(Task::failed, Task::pure)
+                        : Task.failed(new SkinLoadException(uuid, "HTTP " + response.statusCode() + " for " + name)));
     }
 
-    private static String textureUrl(JsonObject texture) {
-        if (texture == null || !texture.has("url")) return "";
-        String url = texture.get("url").getAsString();
-        return url == null ? "" : url;
+    private static Task<Maybe<byte[]>> downloadOptional(String url) {
+        if (isBlank(url)) {
+            return Task.pure(Maybe.none());
+        }
+        return Task.async(() -> HTTP.sendAsync(get(url), HttpResponse.BodyHandlers.ofByteArray()))
+                .map(response -> successful(response)
+                        ? Maybe.ofNullable(response.body()).filter(bytes -> bytes.length > 0)
+                        : Maybe.<byte[]>none())
+                .recover(err -> Maybe.none());
     }
 
-    private static CompletableFuture<byte[]> downloadBytes(String url) {
-        if (url == null || url.isBlank()) return CompletableFuture.completedFuture(null);
-        HttpRequest req = HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofSeconds(12))
-                .GET()
-                .build();
-        return HTTP.sendAsync(req, HttpResponse.BodyHandlers.ofByteArray())
-                .thenApply(HttpResponse::body)
-                .exceptionally(err -> null);
+    private static HttpRequest get(String url) {
+        return HttpRequest.newBuilder(URI.create(url)).timeout(HTTP_TIMEOUT).GET().build();
     }
 
-    private static void loadFromDisk(UUID uuid) {
-        try {
-            byte[] skinBytes = Files.readAllBytes(cacheFile(uuid));
-            if (skinBytes == null || skinBytes.length == 0) return;
-            byte[] capeBytes = Files.isRegularFile(capeFile(uuid)) ? Files.readAllBytes(capeFile(uuid)) : null;
-            byte[] elytraBytes = Files.isRegularFile(elytraFile(uuid)) ? Files.readAllBytes(elytraFile(uuid)) : null;
+    private static boolean successful(HttpResponse<?> response) {
+        int status = response.statusCode();
+        return status >= 200 && status < 300;
+    }
+
+    private static Either<String, ProfileTextures> extractTexturesFromProfileJson(String json) {
+        if (isBlank(json)) {
+            return Either.left("blank profile json");
+        }
+        return Attempts.either("invalid profile json", () -> JsonParser.parseString(json).getAsJsonObject())
+                .flatMap(MojangSkinCache::findEncodedTextures)
+                .flatMap(MojangSkinCache::decodeTextures);
+    }
+
+    private static Either<String, ProfileTextures> decodeTextures(String encoded) {
+        return Attempts.either("invalid textures payload", () -> {
+            String decoded = new String(Base64.getDecoder().decode(encoded), StandardCharsets.UTF_8);
+            return JsonParser.parseString(decoded).getAsJsonObject();
+        }).flatMap(MojangSkinCache::readProfileTextures);
+    }
+
+    private static Either<String, String> findEncodedTextures(JsonObject root) {
+        JsonArray props = root.getAsJsonArray("properties");
+        if (props == null) {
+            return Either.left("profile json has no properties");
+        }
+        for (JsonElement el : props) {
+            if (el == null || !el.isJsonObject()) continue;
+            JsonObject obj = el.getAsJsonObject();
+            JsonElement name = obj.get("name");
+            JsonElement value = obj.get("value");
+            if (name == null || name.isJsonNull() || value == null || value.isJsonNull()) continue;
+            if (!"textures".equals(name.getAsString())) continue;
+            String encoded = value.getAsString();
+            if (encoded != null && !encoded.isBlank()) {
+                return Either.right(encoded);
+            }
+        }
+        return Either.left("profile json has no textures property");
+    }
+
+    private static Either<String, ProfileTextures> readProfileTextures(JsonObject texturesRoot) {
+        JsonObject textures = texturesRoot.getAsJsonObject("textures");
+        if (textures == null) {
+            return Either.left("textures payload has no textures object");
+        }
+        JsonObject skin = textures.getAsJsonObject("SKIN");
+        if (skin == null || !skin.has("url")) {
+            return Either.left("textures payload has no skin url");
+        }
+        JsonElement skinUrl = skin.get("url");
+        if (skinUrl == null || skinUrl.isJsonNull() || skinUrl.getAsString().isBlank()) {
+            return Either.left("textures payload has no skin url");
+        }
+
+        String model = "default";
+        JsonObject metadata = skin.getAsJsonObject("metadata");
+        if (metadata != null && metadata.has("model") && !metadata.get("model").isJsonNull()) {
+            model = metadata.get("model").getAsString();
+        }
+
+        JsonObject cape = textures.getAsJsonObject("CAPE");
+        JsonObject elytra = textures.getAsJsonObject("ELYTRA");
+        String capeUrl = cape != null && cape.has("url") && !cape.get("url").isJsonNull()
+                ? cape.get("url").getAsString()
+                : "";
+        String elytraUrl = elytra != null && elytra.has("url") && !elytra.get("url").isJsonNull()
+                ? elytra.get("url").getAsString()
+                : "";
+        return Either.right(new ProfileTextures(skinUrl.getAsString(), model, capeUrl, elytraUrl));
+    }
+
+    private static Task<Maybe<SkinAssets>> readFromDisk(UUID uuid) {
+        //noinspection RedundantTypeArguments
+        return Task.<Maybe<SkinAssets>>delay(() -> {
+            Path skin = cacheFile(uuid);
+            if (!Files.isRegularFile(skin)) {
+                return Maybe.none();
+            }
+            Maybe<byte[]> skinBytes = Maybe.ofNullable(Files.readAllBytes(skin)).filter(bytes -> bytes.length > 0);
+            if (skinBytes.isEmpty()) {
+                return Maybe.none();
+            }
             String model = Files.isRegularFile(modelFile(uuid)) ? Files.readString(modelFile(uuid)).trim() : "default";
-            registerDynamic(uuid, skinBytes, model, capeBytes, elytraBytes);
-        } catch (Exception ignored) {
-        }
+            if (model.isBlank()) {
+                model = "default";
+            }
+            return Maybe.some(new SkinAssets(
+                    skinBytes.get(),
+                    model,
+                    readOptionalBytes(capeFile(uuid)),
+                    readOptionalBytes(elytraFile(uuid))));
+        }).recover(err -> Maybe.<SkinAssets>none());
     }
 
-    private static void registerDynamic(UUID uuid, byte[] skinBytes, String model, byte[] capeBytes, byte[] elytraBytes) {
-        if (uuid == null || skinBytes == null || skinBytes.length == 0) return;
-        if (LOADED.containsKey(uuid)) return;
-
-        Minecraft mc = Minecraft.getInstance();
-        if (mc == null) return;
-
-        mc.execute(() -> {
-            if (LOADED.containsKey(uuid)) return;
-            try {
-                NativeImage img = NativeImage.read(new ByteArrayInputStream(skinBytes));
-                img = processLegacySkin(img);
-                if (img == null) return;
-                DynamicTexture tex = new DynamicTexture(img);
-                ResourceLocation rl = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "skins/mojang/" + uuid);
-                mc.getTextureManager().register(rl, tex);
-
-                ResourceLocation cape = registerRawTexture(mc, "skins/mojang/" + uuid + "_cape", capeBytes);
-                ResourceLocation elytra = registerRawTexture(mc, "skins/mojang/" + uuid + "_elytra", elytraBytes);
-                LOADED.put(uuid, SurvivorPlayerSkin.fromMojang(rl, "slim".equalsIgnoreCase(model), cape, elytra));
-            } catch (Exception ignored) {
-            }
+    private static Task<Unit> writeToDisk(UUID uuid, SkinAssets assets) {
+        return Task.delay(() -> {
+            Path cacheFile = cacheFile(uuid);
+            Files.createDirectories(cacheFile.getParent());
+            Files.write(cacheFile, assets.skinBytes());
+            Files.writeString(modelFile(uuid), assets.model(), StandardCharsets.UTF_8);
+            assets.capeBytes().ifPresent(bytes -> writeOptionalBytes(capeFile(uuid), bytes));
+            assets.elytraBytes().ifPresent(bytes -> writeOptionalBytes(elytraFile(uuid), bytes));
+            return Unit.INSTANCE;
         });
     }
 
-    private static ResourceLocation registerRawTexture(Minecraft mc, String path, byte[] bytes) {
-        if (bytes == null || bytes.length == 0) return null;
-        try {
-            NativeImage img = NativeImage.read(new ByteArrayInputStream(bytes));
+    private static void writeOptionalBytes(Path path, byte[] bytes) {
+        Attempts.maybe(() -> Files.write(path, bytes));
+    }
+
+    private static Maybe<byte[]> readOptionalBytes(Path path) {
+        return Attempts.maybe(() -> Files.isRegularFile(path) ? Files.readAllBytes(path) : null)
+                .flatMap(bytes -> Maybe.ofNullable(bytes).filter(value -> value.length > 0));
+    }
+
+    private static Task<Unit> registerDynamic(UUID uuid, SkinAssets assets) {
+        return Task.delay(() -> {
+            registerDynamic(uuid, assets.skinBytes(), assets.model(), assets.capeBytes(), assets.elytraBytes());
+            return Unit.INSTANCE;
+        });
+    }
+
+    private static void registerDynamic(
+            UUID uuid,
+            byte[] skinBytes,
+            String model,
+            Maybe<byte[]> capeBytes,
+            Maybe<byte[]> elytraBytes) {
+        if (uuid == null || skinBytes == null || skinBytes.length == 0) return;
+        if (LOADED.containsKey(uuid)) return;
+        Minecraft mc = Minecraft.getInstance();
+        mc.execute(() -> {
+            if (LOADED.containsKey(uuid)) return;
+            registerSkinTexture(mc, uuid, skinBytes)
+                    .peek(rl -> {
+                        ResourceLocation cape = nullable(capeBytes
+                                .flatMap(bytes -> registerRawTexture(mc, "skins/mojang/" + uuid + "_cape", bytes)));
+                        ResourceLocation elytra = nullable(elytraBytes
+                                .flatMap(bytes -> registerRawTexture(mc, "skins/mojang/" + uuid + "_elytra", bytes)));
+                        LOADED.put(uuid, SurvivorPlayerSkin.fromMojang(rl, "slim".equalsIgnoreCase(model), cape, elytra));
+                    });
+        });
+    }
+
+    private static Maybe<ResourceLocation> registerSkinTexture(Minecraft mc, UUID uuid, byte[] skinBytes) {
+        return readNativeImage(skinBytes)
+                .map(MojangSkinCache::processLegacySkin)
+                .flatMap(img -> registerNativeImage(mc, "skins/mojang/" + uuid, img));
+    }
+
+    private static Maybe<ResourceLocation> registerRawTexture(Minecraft mc, String path, byte[] bytes) {
+        if (bytes == null || bytes.length == 0) return Maybe.none();
+        return readNativeImage(bytes).flatMap(img -> registerNativeImage(mc, path, img));
+    }
+
+    private static Maybe<NativeImage> readNativeImage(byte[] bytes) {
+        return Attempts.maybe(() -> NativeImage.read(new ByteArrayInputStream(bytes)));
+    }
+
+    private static Maybe<ResourceLocation> registerNativeImage(Minecraft mc, String path, NativeImage img) {
+        if (img == null) return Maybe.none();
+        return Attempts.maybe(() -> {
             DynamicTexture tex = new DynamicTexture(img);
             ResourceLocation rl = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, path);
             mc.getTextureManager().register(rl, tex);
             return rl;
-        } catch (Exception ignored) {
-            return null;
-        }
+        });
     }
 
-    /**
-     * Copied from vanilla {@code HttpTexture#processLegacySkin} to support classic 64x32 skins.
-     * Without this, 64x32 skins will render as mostly black because player models use a 64x64 texHeight.
-     */
     private static NativeImage processLegacySkin(NativeImage img) {
         if (img == null) return null;
         int height = img.getHeight();
@@ -249,12 +374,8 @@ public final class MojangSkinCache {
                 expanded.copyRect(48, 20, -16, 32, 4, 12, true, false);
                 expanded.copyRect(52, 20, -8, 32, 4, 12, true, false);
             }
-
             setNoAlpha(img, 0, 0, 32, 16);
-            if (legacy) {
-                doNotchTransparencyHack(img, 32, 0, 64, 32);
-            }
-
+            if (legacy) doNotchTransparencyHack(img, 32, 0, 64, 32);
             setNoAlpha(img, 0, 16, 64, 32);
             setNoAlpha(img, 16, 48, 48, 64);
             return img;
@@ -265,53 +386,51 @@ public final class MojangSkinCache {
     }
 
     private static void doNotchTransparencyHack(NativeImage img, int x1, int y1, int x2, int y2) {
-        for (int x = x1; x < x2; x++) {
-            for (int y = y1; y < y2; y++) {
-                int rgba = img.getPixelRGBA(x, y);
-                if ((rgba >> 24 & 0xFF) < 128) {
-                    return;
-                }
-            }
-        }
-
-        for (int x = x1; x < x2; x++) {
-            for (int y = y1; y < y2; y++) {
+        for (int x = x1; x < x2; x++)
+            for (int y = y1; y < y2; y++)
+                if ((img.getPixelRGBA(x, y) >> 24 & 0xFF) < 128) return;
+        for (int x = x1; x < x2; x++)
+            for (int y = y1; y < y2; y++)
                 img.setPixelRGBA(x, y, img.getPixelRGBA(x, y) & 0xFFFFFF);
-            }
-        }
     }
 
     private static void setNoAlpha(NativeImage img, int x1, int y1, int x2, int y2) {
-        for (int x = x1; x < x2; x++) {
-            for (int y = y1; y < y2; y++) {
+        for (int x = x1; x < x2; x++)
+            for (int y = y1; y < y2; y++)
                 img.setPixelRGBA(x, y, img.getPixelRGBA(x, y) | 0xFF000000);
-            }
-        }
     }
 
     private static Path cacheFile(UUID uuid) {
         Minecraft mc = Minecraft.getInstance();
-        Path gameDir = mc.gameDirectory.toPath();
-        return gameDir
-                .resolve("config")
-                .resolve(EchoesofSurvival.MODID)
-                .resolve("skins")
-                .resolve("mojang")
+        return mc.gameDirectory.toPath()
+                .resolve("config").resolve(EchoesofSurvival.MODID)
+                .resolve("skins").resolve("mojang")
                 .resolve(uuid.toString() + ".png");
     }
 
-    private static Path capeFile(UUID uuid) {
-        return cacheFile(uuid).resolveSibling(uuid + "_cape.png");
+    private static Path capeFile(UUID uuid) { return cacheFile(uuid).resolveSibling(uuid + "_cape.png"); }
+    private static Path elytraFile(UUID uuid) { return cacheFile(uuid).resolveSibling(uuid + "_elytra.png"); }
+    private static Path modelFile(UUID uuid) { return cacheFile(uuid).resolveSibling(uuid + ".model"); }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
-    private static Path elytraFile(UUID uuid) {
-        return cacheFile(uuid).resolveSibling(uuid + "_elytra.png");
+    private static <A> A nullable(Maybe<A> value) {
+        return value.isDefined() ? value.get() : null;
     }
 
-    private static Path modelFile(UUID uuid) {
-        return cacheFile(uuid).resolveSibling(uuid + ".model");
-    }
+    private record ProfileTextures(String skinUrl, String model, String capeUrl, String elytraUrl) {}
 
-    private record ProfileTextures(String skinUrl, String model, String capeUrl, String elytraUrl) {
+    private record SkinAssets(
+            byte[] skinBytes,
+            String model,
+            Maybe<byte[]> capeBytes,
+            Maybe<byte[]> elytraBytes) {}
+
+    private static final class SkinLoadException extends RuntimeException {
+        private SkinLoadException(UUID uuid, String message) {
+            super("Mojang skin " + uuid + ": " + message);
+        }
     }
 }

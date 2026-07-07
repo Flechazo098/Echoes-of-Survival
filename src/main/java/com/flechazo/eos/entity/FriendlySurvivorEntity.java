@@ -568,8 +568,8 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
             setSkinUsername(null);
             return;
         }
-        setSkinUuid(profile.uuid());
-        setSkinUsername(profile.username());
+        setSkinUuid(profile.uuid().orElse(null));
+        setSkinUsername(profile.name());
     }
 
     public Optional<UUID> getRecruitOwnerUuid() {

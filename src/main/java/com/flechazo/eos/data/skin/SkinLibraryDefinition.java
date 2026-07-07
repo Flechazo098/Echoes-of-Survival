@@ -6,8 +6,8 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.resources.ResourceLocation;
 
+import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -18,7 +18,7 @@ import java.util.UUID;
 )
 public record SkinLibraryDefinition(
         ResourceLocation id,
-        Map<UUID, String> skins
+        List<SkinEntry> skins
 ) {
     private static final Codec<UUID> UUID_CODEC = Codec.STRING.xmap(
             SkinLibraryDefinition::parseUuid,
@@ -27,14 +27,45 @@ public record SkinLibraryDefinition(
 
     public static final Codec<SkinLibraryDefinition> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             ResourceLocation.CODEC.fieldOf("id").forGetter(SkinLibraryDefinition::id),
-            Codec.unboundedMap(UUID_CODEC, Codec.STRING).fieldOf("skins").forGetter(SkinLibraryDefinition::skins)
+            SkinEntry.CODEC.listOf().fieldOf("skins").forGetter(SkinLibraryDefinition::skins)
     ).apply(instance, SkinLibraryDefinition::new));
 
-    public Optional<UUID> pick(UUID seed) {
+    public Optional<SkinEntry> pick(UUID seed) {
         if (skins == null || skins.isEmpty() || seed == null) return Optional.empty();
-        var uuids = skins.keySet().stream().sorted().toList();
-        int idx = Math.floorMod(seed.hashCode(), uuids.size());
-        return Optional.ofNullable(uuids.get(idx));
+        int idx = Math.floorMod(seed.hashCode(), skins.size());
+        return Optional.ofNullable(skins.get(idx));
+    }
+
+    public record SkinEntry(
+            String name,
+            Optional<UUID> uuid,
+            Optional<ResourceLocation> texture,
+            Optional<String> model,
+            Optional<ResourceLocation> cape,
+            Optional<ResourceLocation> elytra
+    ) {
+        public static final Codec<SkinEntry> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+                Codec.STRING.fieldOf("name").forGetter(SkinEntry::name),
+                UUID_CODEC.optionalFieldOf("uuid").forGetter(SkinEntry::uuid),
+                ResourceLocation.CODEC.optionalFieldOf("texture").forGetter(SkinEntry::texture),
+                Codec.STRING.optionalFieldOf("model").forGetter(SkinEntry::model),
+                ResourceLocation.CODEC.optionalFieldOf("cape").forGetter(SkinEntry::cape),
+                ResourceLocation.CODEC.optionalFieldOf("elytra").forGetter(SkinEntry::elytra)
+        ).apply(instance, SkinEntry::new));
+
+        public boolean mojang() {
+            return uuid().isPresent();
+        }
+
+        public boolean local() {
+            return texture().isPresent();
+        }
+
+        public boolean slim() {
+            return model()
+                    .map(value -> value.equalsIgnoreCase("slim"))
+                    .orElse(false);
+        }
     }
 
     private static UUID parseUuid(String raw) {
@@ -57,10 +88,16 @@ public record SkinLibraryDefinition(
             if (data.skins == null || data.skins.isEmpty()) {
                 return ValidationResult.failure("'skins' must not be empty");
             }
-            for (Map.Entry<UUID, String> entry : data.skins.entrySet()) {
-                if (entry.getKey() == null) return ValidationResult.failure("'skins' contains a null uuid");
-                if (entry.getValue() == null || entry.getValue().isBlank()) {
-                    return ValidationResult.failure("'skins' contains a blank username for " + entry.getKey());
+            for (SkinEntry entry : data.skins) {
+                if (entry == null) return ValidationResult.failure("'skins' contains a null entry");
+                if (entry.name() == null || entry.name().isBlank()) {
+                    return ValidationResult.failure("'skins' contains an entry with blank name");
+                }
+                if (entry.mojang() == entry.local()) {
+                    return ValidationResult.failure("'skins' entry '" + entry.name() + "' must contain exactly one of 'uuid' or 'texture'");
+                }
+                if (entry.mojang() && (entry.cape().isPresent() || entry.elytra().isPresent())) {
+                    return ValidationResult.failure("'skins' entry '" + entry.name() + "' uses uuid and must not define local cape/elytra");
                 }
             }
             return ValidationResult.success();

@@ -2,7 +2,6 @@ package com.flechazo.eos.data.trade;
 
 import cc.sighs.oelib.data.api.DataDriven;
 import cc.sighs.oelib.data.api.DataValidator;
-import com.mojang.datafixers.util.Either;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.Util;
@@ -19,54 +18,20 @@ import java.util.Optional;
 )
 public record ProfessionDefinition(
         ResourceLocation id,
-        Optional<SkinDefinition> skin,
-        Optional<SkinDefinition> hostileSkin,
-        Optional<SkinDefinition> neutralSkin,
+        Optional<ResourceLocation> skin,
+        Optional<ResourceLocation> hostileSkin,
+        Optional<ResourceLocation> neutralSkin,
         InitialEquipment initialEquipment,
         Logic logic
 ) {
     public static final Codec<ProfessionDefinition> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             ResourceLocation.CODEC.fieldOf("id").forGetter(ProfessionDefinition::id),
-            SkinDefinition.CODEC.optionalFieldOf("skin").forGetter(ProfessionDefinition::skin),
-            SkinDefinition.CODEC.optionalFieldOf("hostile_skin").forGetter(ProfessionDefinition::hostileSkin),
-            SkinDefinition.CODEC.optionalFieldOf("neutral_skin").forGetter(ProfessionDefinition::neutralSkin),
+            ResourceLocation.CODEC.optionalFieldOf("skin").forGetter(ProfessionDefinition::skin),
+            ResourceLocation.CODEC.optionalFieldOf("hostile_skin").forGetter(ProfessionDefinition::hostileSkin),
+            ResourceLocation.CODEC.optionalFieldOf("neutral_skin").forGetter(ProfessionDefinition::neutralSkin),
             InitialEquipment.CODEC.fieldOf("initial_equipment").forGetter(ProfessionDefinition::initialEquipment),
             Logic.CODEC.fieldOf("logic").forGetter(ProfessionDefinition::logic)
     ).apply(instance, ProfessionDefinition::new));
-
-    public record SkinDefinition(
-            ResourceLocation texture,
-            Optional<String> model,
-            Optional<ResourceLocation> cape,
-            Optional<ResourceLocation> elytra
-    ) {
-        private static final Codec<SkinDefinition> OBJECT_CODEC = RecordCodecBuilder.create(instance -> instance.group(
-                ResourceLocation.CODEC.fieldOf("texture").forGetter(SkinDefinition::texture),
-                Codec.STRING.optionalFieldOf("model").forGetter(SkinDefinition::model),
-                ResourceLocation.CODEC.optionalFieldOf("cape").forGetter(SkinDefinition::cape),
-                ResourceLocation.CODEC.optionalFieldOf("elytra").forGetter(SkinDefinition::elytra)
-        ).apply(instance, SkinDefinition::new));
-
-        public static final Codec<SkinDefinition> CODEC = Codec.either(ResourceLocation.CODEC, OBJECT_CODEC)
-                .xmap(
-                        either -> either.map(SkinDefinition::wide, value -> value),
-                        value -> value.isTextureOnlyWide() ? Either.left(value.texture()) : Either.right(value)
-                );
-
-        public static SkinDefinition wide(ResourceLocation texture) {
-            return new SkinDefinition(texture, Optional.empty(), Optional.empty(), Optional.empty());
-        }
-
-        public boolean slim() {
-            return model()
-                    .map(value -> value.equalsIgnoreCase("slim"))
-                    .orElse(false);
-        }
-
-        private boolean isTextureOnlyWide() {
-            return model().isEmpty() && cape().isEmpty() && elytra().isEmpty();
-        }
-    }
 
     public record InitialEquipment(
             Optional<ResourceLocation> armorSet,

@@ -37,6 +37,7 @@ public final class EosDatapackIndex {
     private static volatile List<Map.Entry<String, ReputationTiersDefinition.Tier>> reputationTiers = List.of();
     private static volatile Map<String, ReputationEventsDefinition.ReputationEvent> reputationEventById = Map.of();
     private static volatile List<SkinProfile> skinLibraryProfiles = List.of();
+    private static volatile Map<ResourceLocation, List<SkinProfile>> skinProfilesByLibrary = Map.of();
     private static volatile Map<UUID, String> skinLibraryUsernamesByUuid = Map.of();
     private static volatile List<String> healingPotionPatterns = List.of();
 
@@ -130,22 +131,27 @@ public final class EosDatapackIndex {
 
     private static void rebuildSkinLibrary() {
         Map<UUID, String> byUuid = new HashMap<>();
+        Map<ResourceLocation, List<SkinProfile>> byLibrary = new HashMap<>();
+        List<SkinProfile> allProfiles = new ArrayList<>();
         for (SkinLibraryDefinition def : DataManager.getDataList(SkinLibraryDefinition.class)) {
             if (def == null || def.skins() == null) continue;
-            for (Map.Entry<UUID, String> entry : def.skins().entrySet()) {
-                UUID uuid = entry.getKey();
-                String username = entry.getValue();
-                if (uuid != null && username != null && !username.isBlank()) {
-                    byUuid.put(uuid, username.trim());
-                }
+            List<SkinProfile> profiles = new ArrayList<>();
+            for (SkinLibraryDefinition.SkinEntry entry : def.skins()) {
+                if (entry == null || entry.name() == null || entry.name().isBlank()) continue;
+                SkinProfile profile = SkinProfile.from(entry);
+                profiles.add(profile);
+                profile.uuid().ifPresent(uuid -> {
+                    byUuid.put(uuid, profile.name());
+                    allProfiles.add(profile);
+                });
+            }
+            if (def.id() != null && !profiles.isEmpty()) {
+                byLibrary.put(def.id(), List.copyOf(profiles));
             }
         }
-        List<SkinProfile> profiles = byUuid.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .map(entry -> new SkinProfile(entry.getKey(), entry.getValue()))
-                .toList();
         skinLibraryUsernamesByUuid = Map.copyOf(byUuid);
-        skinLibraryProfiles = List.copyOf(profiles);
+        skinProfilesByLibrary = Map.copyOf(byLibrary);
+        skinLibraryProfiles = List.copyOf(allProfiles);
     }
 
     private static void rebuildHealingPotions() {
@@ -262,7 +268,7 @@ public final class EosDatapackIndex {
     }
 
     public static List<UUID> skinLibraryUuids() {
-        return skinLibraryProfiles.stream().map(SkinProfile::uuid).toList();
+        return skinLibraryProfiles.stream().flatMap(profile -> profile.uuid().stream()).toList();
     }
 
     public static List<SkinProfile> skinLibraryProfiles() {
@@ -275,11 +281,41 @@ public final class EosDatapackIndex {
         return Optional.of(skinLibraryProfiles.get(idx));
     }
 
+    public static Optional<SkinProfile> pickSkinProfile(ResourceLocation library, UUID seed) {
+        if (library == null || seed == null) return Optional.empty();
+        List<SkinProfile> profiles = skinProfilesByLibrary.getOrDefault(library, List.of());
+        if (profiles.isEmpty()) return Optional.empty();
+        int idx = Math.floorMod(seed.hashCode(), profiles.size());
+        return Optional.of(profiles.get(idx));
+    }
+
     public static Optional<String> skinLibraryUsername(UUID uuid) {
         if (uuid == null) return Optional.empty();
         return Optional.ofNullable(skinLibraryUsernamesByUuid.get(uuid));
     }
 
-    public record SkinProfile(UUID uuid, String username) {
+    public record SkinProfile(
+            String name,
+            Optional<UUID> uuid,
+            Optional<ResourceLocation> texture,
+            Optional<String> model,
+            Optional<ResourceLocation> cape,
+            Optional<ResourceLocation> elytra
+    ) {
+        private static SkinProfile from(SkinLibraryDefinition.SkinEntry entry) {
+            return new SkinProfile(
+                    entry.name().trim(),
+                    entry.uuid(),
+                    entry.texture(),
+                    entry.model(),
+                    entry.cape(),
+                    entry.elytra());
+        }
+
+        public boolean slim() {
+            return model()
+                    .map(value -> value.equalsIgnoreCase("slim"))
+                    .orElse(false);
+        }
     }
 }
