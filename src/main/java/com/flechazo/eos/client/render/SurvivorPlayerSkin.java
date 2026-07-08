@@ -3,7 +3,6 @@ package com.flechazo.eos.client.render;
 import com.flechazo.eos.data.EosDatapackIndex;
 import com.flechazo.hkt.Maybe;
 import net.minecraft.resources.ResourceLocation;
-import org.jetbrains.annotations.Nullable;
 
 public record SurvivorPlayerSkin(
         ResourceLocation texture,
@@ -27,23 +26,17 @@ public record SurvivorPlayerSkin(
         ));
     }
 
-    public static SurvivorPlayerSkin fromProfile(EosDatapackIndex.SkinProfile profile, SurvivorPlayerSkin mojang) {
-        return mojang != null
-                ? mojang
-                : fromLocalProfile(profile).orElse(null);
-    }
-
     public static SurvivorPlayerSkin fromMojang(
             ResourceLocation texture,
             boolean slim,
-            @Nullable ResourceLocation cape,
-            @Nullable ResourceLocation elytra
+            Maybe<ResourceLocation> cape,
+            Maybe<ResourceLocation> elytra
     ) {
         return new SurvivorPlayerSkin(
                 texture,
                 slim,
-                Maybe.ofNullable(cape),
-                Maybe.ofNullable(elytra)
+                cape,
+                elytra
         );
     }
 }

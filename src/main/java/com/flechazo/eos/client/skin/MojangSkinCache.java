@@ -314,10 +314,10 @@ public final class MojangSkinCache {
             if (LOADED.containsKey(uuid)) return;
             registerSkinTexture(mc, uuid, skinBytes)
                     .peek(rl -> {
-                        ResourceLocation cape = nullable(capeBytes
-                                .flatMap(bytes -> registerRawTexture(mc, "skins/mojang/" + uuid + "_cape", bytes)));
-                        ResourceLocation elytra = nullable(elytraBytes
-                                .flatMap(bytes -> registerRawTexture(mc, "skins/mojang/" + uuid + "_elytra", bytes)));
+                        Maybe<ResourceLocation> cape = capeBytes
+                                .flatMap(bytes -> registerRawTexture(mc, "skins/mojang/" + uuid + "_cape", bytes));
+                        Maybe<ResourceLocation> elytra = elytraBytes
+                                .flatMap(bytes -> registerRawTexture(mc, "skins/mojang/" + uuid + "_elytra", bytes));
                         LOADED.put(uuid, SurvivorPlayerSkin.fromMojang(rl, "slim".equalsIgnoreCase(model), cape, elytra));
                     });
         });
@@ -413,10 +413,6 @@ public final class MojangSkinCache {
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
-    }
-
-    private static <A> A nullable(Maybe<A> value) {
-        return value.isDefined() ? value.get() : null;
     }
 
     private record ProfileTextures(String skinUrl, String model, String capeUrl, String elytraUrl) {}

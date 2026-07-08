@@ -1,5 +1,6 @@
 package com.flechazo.eos.client.render;
 
+import com.flechazo.eos.EchoesofSurvival;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.List;
@@ -10,10 +11,10 @@ public final class SurvivorSkins {
     }
 
     public static final List<ResourceLocation> PRESET_POOL = List.of(
-            ResourceLocation.fromNamespaceAndPath("echoes", "textures/entity/survivor/friendly_survivor.png"),
-            ResourceLocation.fromNamespaceAndPath("echoes", "textures/entity/survivor/medic.png"),
-            ResourceLocation.fromNamespaceAndPath("echoes", "textures/entity/survivor/scavenger.png"),
-            ResourceLocation.fromNamespaceAndPath("echoes", "textures/entity/survivor/mechanic.png")
+            ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "textures/entity/survivor/friendly_survivor.png"),
+            ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "textures/entity/survivor/medic.png"),
+            ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "textures/entity/survivor/scavenger.png"),
+            ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "textures/entity/survivor/mechanic.png")
     );
 
     public static ResourceLocation pick(UUID uuid, List<ResourceLocation> pool, ResourceLocation fallback) {
@@ -22,4 +23,3 @@ public final class SurvivorSkins {
         return pool.get(idx);
     }
 }
-

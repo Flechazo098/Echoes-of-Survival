@@ -28,8 +28,9 @@ public final class QuestApi {
     }
 
     public static boolean accept(ServerPlayer player, ResourceLocation questId) {
-        QuestDefinition def = EosDatapackIndex.quest(questId).orElse(null);
-        if (def == null) return false;
+        var defOpt = EosDatapackIndex.quest(questId);
+        if (defOpt.isEmpty()) return false;
+        QuestDefinition def = defOpt.get();
 
         if (def.repeatable() && def.maxRepeats() > 0) {
             int completions = getCompletions(player, questId);
@@ -58,8 +59,9 @@ public final class QuestApi {
     }
 
     public static boolean claim(ServerPlayer player, ResourceLocation questId) {
-        QuestDefinition def = EosDatapackIndex.quest(questId).orElse(null);
-        if (def == null) return false;
+        var defOpt = EosDatapackIndex.quest(questId);
+        if (defOpt.isEmpty()) return false;
+        QuestDefinition def = defOpt.get();
 
         PlayerQuestState state = getState(player);
         PlayerQuestState.QuestProgress progress = state.active().get(questId);
@@ -117,8 +119,9 @@ public final class QuestApi {
             PlayerQuestState.QuestProgress prog = entry.getValue();
             if (prog == null || prog.completed()) continue;
 
-            QuestDefinition def = EosDatapackIndex.quest(questId).orElse(null);
-            if (def == null || !def.type().equals(QuestDefinition.TYPE_KILL_ENTITIES)) continue;
+            var defOpt = EosDatapackIndex.quest(questId);
+            if (defOpt.isEmpty() || !defOpt.get().type().equals(QuestDefinition.TYPE_KILL_ENTITIES)) continue;
+            QuestDefinition def = defOpt.get();
 
             List<Integer> objectiveProgress = new ArrayList<>(prog.objectiveProgress());
             boolean progressChanged = false;
@@ -154,8 +157,10 @@ public final class QuestApi {
     }
 
     public static boolean submitItems(ServerPlayer player, ResourceLocation questId) {
-        QuestDefinition def = EosDatapackIndex.quest(questId).orElse(null);
-        if (def == null || !def.type().equals(QuestDefinition.TYPE_SUBMIT_ITEMS)) return false;
+        var defOpt = EosDatapackIndex.quest(questId);
+        if (defOpt.isEmpty()) return false;
+        QuestDefinition def = defOpt.get();
+        if (!def.type().equals(QuestDefinition.TYPE_SUBMIT_ITEMS)) return false;
 
         PlayerQuestState state = getState(player);
         PlayerQuestState.QuestProgress prog = state.active().get(questId);
@@ -166,17 +171,16 @@ public final class QuestApi {
         for (QuestDefinition.Objective obj : def.objectives()) {
             if (obj == null || obj.itemTarget().isEmpty()) continue;
             ResourceLocation itemId = obj.itemTarget().get();
-            Item item = BuiltInRegistries.ITEM.getOptional(itemId).orElse(null);
-            if (item == null) return false;
-            if (countItem(inv, item) < obj.count()) return false;
+            Optional<Item> item = BuiltInRegistries.ITEM.getOptional(itemId);
+            if (item.isEmpty()) return false;
+            if (countItem(inv, item.get()) < obj.count()) return false;
         }
 
         for (QuestDefinition.Objective obj : def.objectives()) {
             if (obj == null || obj.itemTarget().isEmpty()) continue;
             ResourceLocation itemId = obj.itemTarget().get();
-            Item item = BuiltInRegistries.ITEM.getOptional(itemId).orElse(null);
-            if (item == null) continue;
-            removeItem(inv, item, obj.count());
+            BuiltInRegistries.ITEM.getOptional(itemId)
+                    .ifPresent(item -> removeItem(inv, item, obj.count()));
         }
 
         List<Integer> objectiveProgress = new ArrayList<>(Collections.nCopies(def.objectives().size(), 0));

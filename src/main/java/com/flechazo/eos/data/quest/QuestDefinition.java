@@ -2,6 +2,7 @@ package com.flechazo.eos.data.quest;
 
 import cc.sighs.oelib.data.api.DataDriven;
 import cc.sighs.oelib.data.api.DataValidator;
+import com.flechazo.eos.EchoesofSurvival;
 import com.flechazo.eos.data.common.TextKey;
 import com.flechazo.hkt.Maybe;
 import com.flechazo.hkt.business.util.OptionalOps;
@@ -42,8 +43,8 @@ public record QuestDefinition(
             Codec.INT.optionalFieldOf("max_repeats", 0).forGetter(QuestDefinition::maxRepeats)
     ).apply(instance, QuestDefinition::new));
 
-    public static final ResourceLocation TYPE_SUBMIT_ITEMS = ResourceLocation.fromNamespaceAndPath("echoes", "submit_items");
-    public static final ResourceLocation TYPE_KILL_ENTITIES = ResourceLocation.fromNamespaceAndPath("echoes", "kill_entities");
+    public static final ResourceLocation TYPE_SUBMIT_ITEMS = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "submit_items");
+    public static final ResourceLocation TYPE_KILL_ENTITIES = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "kill_entities");
 
     public Maybe<Either<Integer, String>> reputationGate() {
         return OptionalOps.toMaybe(requireReputation);

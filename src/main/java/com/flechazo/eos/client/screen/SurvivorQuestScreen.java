@@ -6,6 +6,7 @@ import com.flechazo.eos.data.common.TextKey;
 import com.flechazo.eos.data.quest.QuestDefinition;
 import com.flechazo.eos.data.reputation.ReputationTiersDefinition;
 import com.flechazo.eos.menu.SurvivorQuestMenu;
+import com.flechazo.hkt.Maybe;
 import com.mojang.datafixers.util.Either;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -42,7 +43,9 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
     private static final int DETAIL_TOP = scaled(35);
     private static final int DETAIL_WIDTH = SCREEN_WIDTH - DETAIL_X - scaled(10);
     private static final int DETAIL_CONTENT_TOP = scaled(52);
-    private static final int DETAIL_CONTENT_BOTTOM = SCREEN_HEIGHT - scaled(28);
+    private static final int DETAIL_REWARD_TITLE_Y = SCREEN_HEIGHT - scaled(58);
+    private static final int DETAIL_REWARD_ICON_Y = DETAIL_REWARD_TITLE_Y + scaled(13);
+    private static final int DETAIL_CONTENT_BOTTOM = DETAIL_REWARD_TITLE_Y - scaled(5);
     private static final int DETAIL_CONTENT_HEIGHT = DETAIL_CONTENT_BOTTOM - DETAIL_CONTENT_TOP;
     private static final int DETAIL_SCROLL_STEP = 12;
     private static final int SCROLL_START_PAUSE_TICKS = 8;
@@ -147,8 +150,10 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
             TexturedButton button = this.questButtons.get(i);
             Component name;
             if (i < quests.size()) {
-                QuestDefinition quest = EosDatapackIndex.quest(quests.get(i)).orElse(null);
-                name = quest != null ? randomizedText(quest.title(), quest.questId(), "title") : Component.literal(quests.get(i).toString());
+                ResourceLocation questId = quests.get(i);
+                name = EosDatapackIndex.quest(questId)
+                        .map(quest -> randomizedText(quest.title(), quest.questId(), "title"))
+                        .orElse(Component.literal(questId.toString()));
             } else {
                 name = Component.empty();
             }
@@ -164,9 +169,8 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
     }
 
     private void updateActionButtons() {
-        QuestDefinition quest = selectedQuest();
+        Maybe<QuestDefinition> questOpt = selectedQuest();
         SurvivorQuestMenu.QuestEntry entry = this.menu.questEntry(selectedQuest);
-        boolean hasQuest = quest != null;
         boolean accepted = entry.accepted();
         boolean completed = entry.completed();
         boolean claimed = entry.claimed();
@@ -174,11 +178,11 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
         this.action = Action.NONE;
         Component message;
         boolean active = false;
-        if (!hasQuest) {
+        if (questOpt.isEmpty()) {
             message = Component.translatable("gui.echoes_of_survival.quest.empty");
         } else if (entry.maxReached()) {
             message = Component.translatable("gui.echoes_of_survival.quest.status.max_reached");
-        } else if (!meetsReputationRequirement(quest)) {
+        } else if (!meetsReputationRequirement(questOpt.get())) {
             message = Component.translatable("gui.echoes_of_survival.quest.status.locked");
         } else if (!accepted) {
             this.action = Action.ACCEPT;
@@ -190,10 +194,10 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
             active = true;
         } else if (claimed) {
             message = Component.translatable("gui.echoes_of_survival.quest.status.claimed");
-        } else if (quest.type().equals(QuestDefinition.TYPE_SUBMIT_ITEMS)) {
+        } else if (questOpt.get().type().equals(QuestDefinition.TYPE_SUBMIT_ITEMS)) {
             this.action = Action.SUBMIT;
             message = Component.translatable("gui.echoes_of_survival.quest.submit");
-            active = hasSubmissionItems(quest);
+            active = hasSubmissionItems(questOpt.get());
         } else {
             message = Component.translatable("gui.echoes_of_survival.quest.status.active");
         }
@@ -256,9 +260,9 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
         updateActionButtons();
     }
 
-    private QuestDefinition selectedQuest() {
-        if (selectedQuest < 0 || selectedQuest >= this.menu.questIds().size()) return null;
-        return EosDatapackIndex.quest(this.menu.questIds().get(selectedQuest)).orElse(null);
+    private Maybe<QuestDefinition> selectedQuest() {
+        if (selectedQuest < 0 || selectedQuest >= this.menu.questIds().size()) return Maybe.none();
+        return EosDatapackIndex.quest(this.menu.questIds().get(selectedQuest));
     }
 
     @Override
@@ -280,11 +284,12 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
     }
 
     private void renderQuestDetails(GuiGraphics graphics) {
-        QuestDefinition quest = selectedQuest();
-        if (quest == null) {
+        Maybe<QuestDefinition> questOpt = selectedQuest();
+        if (questOpt.isEmpty()) {
             graphics.drawString(this.font, Component.translatable("gui.echoes_of_survival.quest.empty"), DETAIL_X, DETAIL_TOP, MUTED, false);
             return;
         }
+        QuestDefinition quest = questOpt.get();
 
         SurvivorQuestMenu.QuestEntry entry = this.menu.questEntry(selectedQuest);
         int x = DETAIL_X;
@@ -312,10 +317,11 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
             graphics.disableScissor();
             return;
         }
-        graphics.drawString(this.font, Component.translatable("gui.echoes_of_survival.quest.rewards"), x, y, TEXT, false);
-        y += 23;
+        graphics.disableScissor();
+
+        graphics.drawString(this.font, Component.translatable("gui.echoes_of_survival.quest.rewards"), x, DETAIL_REWARD_TITLE_Y, TEXT, false);
         int rewardX = x + scaled(4);
-        int rewardY = y;
+        int rewardY = DETAIL_REWARD_ICON_Y;
         for (int i = 0; i < quest.rewards().items().size(); i++) {
             ItemStack reward = quest.rewards().items().get(i);
             renderRewardIcon(graphics, reward, rewardX + i * 20, rewardY);
@@ -324,7 +330,6 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
         if (quest.rewards().reputation() != 0) {
             graphics.drawString(this.font, Component.translatable("gui.echoes_of_survival.quest.reputation_reward", quest.rewards().reputation()), x + 52, rewardY + 2, GOLD, false);
         }
-        graphics.disableScissor();
     }
 
     private boolean isMouseOverDetail(double mouseX, double mouseY) {
@@ -338,8 +343,9 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
     }
 
     private int maxDetailScroll() {
-        QuestDefinition quest = selectedQuest();
-        if (quest == null) return 0;
+        Maybe<QuestDefinition> questOpt = selectedQuest();
+        if (questOpt.isEmpty()) return 0;
+        QuestDefinition quest = questOpt.get();
         SurvivorQuestMenu.QuestEntry entry = this.menu.questEntry(selectedQuest);
         return Math.max(0, detailContentHeight(quest, entry) - DETAIL_CONTENT_HEIGHT);
     }
@@ -358,8 +364,6 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
         height += 14;
         if (!meetsReputationRequirement(quest)) {
             height += this.font.split(Component.translatable("gui.echoes_of_survival.quest.reputation_required", reputationRequirementValue(quest)), DETAIL_WIDTH).size() * 10;
-        } else {
-            height += 49;
         }
         return height;
     }

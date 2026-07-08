@@ -1,6 +1,7 @@
 package com.flechazo.eos.entity.ai.goal;
 
 import com.flechazo.eos.entity.FriendlySurvivorEntity;
+import com.flechazo.hkt.Maybe;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -63,10 +64,10 @@ public class FollowRecruitOwnerGoal extends Goal {
         }
         if (!(this.survivor.level() instanceof ServerLevel serverLevel)) return false;
 
-        UUID ownerId = this.survivor.getRecruitOwnerUuid().orElse(null);
-        if (ownerId == null) return false;
+        Maybe<UUID> ownerId = this.survivor.getRecruitOwnerUuid();
+        if (ownerId.isEmpty()) return false;
 
-        Player player = serverLevel.getPlayerByUUID(ownerId);
+        Player player = serverLevel.getPlayerByUUID(ownerId.get());
         if (!(player instanceof ServerPlayer serverPlayer) || serverPlayer.isSpectator()) return false;
         if (this.survivor.isPassenger()) return false;
         if (shouldYieldToCombat(this.survivor.getTarget(), serverPlayer)) {

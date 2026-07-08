@@ -81,7 +81,12 @@ public class SurvivorPersonalMenu extends AbstractContainerMenu {
             addSlot(new SlotItemHandler(handler, i, scaled(13), scaled(37 + i * 18)) {
                 @Override
                 public boolean mayPlace(ItemStack stack) {
-                    return !stack.isEmpty() && survivor != null && stack.canEquip(eq, survivor);
+                    return canModifySurvivor(player) && !stack.isEmpty() && survivor != null && stack.canEquip(eq, survivor);
+                }
+
+                @Override
+                public boolean mayPickup(Player player) {
+                    return canModifySurvivor(player) && super.mayPickup(player);
                 }
 
                 @Override
@@ -94,20 +99,40 @@ public class SurvivorPersonalMenu extends AbstractContainerMenu {
         addSlot(new SlotItemHandler(handler, ARMOR_COUNT, scaled(85), scaled(37)) {
             @Override
             public boolean mayPlace(ItemStack stack) {
-                return !stack.isEmpty();
+                return canModifySurvivor(player) && !stack.isEmpty();
+            }
+
+            @Override
+            public boolean mayPickup(Player player) {
+                return canModifySurvivor(player) && super.mayPickup(player);
             }
         });
         addSlot(new SlotItemHandler(handler, ARMOR_COUNT + 1, scaled(85), scaled(55)) {
             @Override
             public boolean mayPlace(ItemStack stack) {
-                return !stack.isEmpty() && survivor != null && stack.canEquip(EquipmentSlot.OFFHAND, survivor);
+                return canModifySurvivor(player) && !stack.isEmpty() && survivor != null && stack.canEquip(EquipmentSlot.OFFHAND, survivor);
+            }
+
+            @Override
+            public boolean mayPickup(Player player) {
+                return canModifySurvivor(player) && super.mayPickup(player);
             }
         });
 
         for (int row = 0; row < 2; row++) {
             for (int col = 0; col < 5; col++) {
                 int idx = ARMOR_COUNT + HAND_COUNT + row * 5 + col;
-                addSlot(new SlotItemHandler(handler, idx, scaled(13) + col * scaled(18), scaled(117) + row * scaled(18)));
+                addSlot(new SlotItemHandler(handler, idx, scaled(13) + col * scaled(18), scaled(117) + row * scaled(18)) {
+                    @Override
+                    public boolean mayPlace(ItemStack stack) {
+                        return canModifySurvivor(player) && super.mayPlace(stack);
+                    }
+
+                    @Override
+                    public boolean mayPickup(Player player) {
+                        return canModifySurvivor(player) && super.mayPickup(player);
+                    }
+                });
             }
         }   
     }
@@ -144,10 +169,16 @@ public class SurvivorPersonalMenu extends AbstractContainerMenu {
         ItemStack result = stack.copy();
 
         if (index < SURVIVOR_SLOT_COUNT) {
+            if (!canModifySurvivor(player)) {
+                return ItemStack.EMPTY;
+            }
             if (!moveItemStackTo(stack, PLAYER_INV_START, MENU_SLOT_COUNT, true)) {
                 return ItemStack.EMPTY;
             }
         } else {
+            if (!canModifySurvivor(player)) {
+                return ItemStack.EMPTY;
+            }
             if (!moveToSurvivor(stack, player)) {
                 return ItemStack.EMPTY;
             }
@@ -159,6 +190,11 @@ public class SurvivorPersonalMenu extends AbstractContainerMenu {
             slot.setChanged();
         }
         return result;
+    }
+
+    private boolean canModifySurvivor(Player player) {
+        Entity entity = player.level().getEntity(survivorEntityId);
+        return entity instanceof FriendlySurvivorEntity survivor && survivor.isRecruitOwner(player);
     }
 
     private boolean moveToSurvivor(ItemStack stack, Player player) {

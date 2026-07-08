@@ -236,15 +236,16 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
     }
 
     protected void applyArmorSet(ResourceLocation armorSetId) {
-        var def = EosDatapackIndex.armorSet(armorSetId).orElse(null);
-        if (def == null || def.set() == null || def.set().isEmpty()) return;
-        var variants = new ArrayList<>(def.set().values());
-        var chosen = variants.get(this.random.nextInt(variants.size()));
-        for (var entry : chosen.slots().entrySet()) {
-            BuiltInRegistries.ITEM
-                    .getOptional(entry.getValue())
-                    .ifPresent(item -> this.setItemSlot(entry.getKey(), new ItemStack(item)));
-        }
+        EosDatapackIndex.armorSet(armorSetId).ifPresent(def -> {
+            if (def.set() == null || def.set().isEmpty()) return;
+            var variants = new ArrayList<>(def.set().values());
+            var chosen = variants.get(this.random.nextInt(variants.size()));
+            for (var entry : chosen.slots().entrySet()) {
+                BuiltInRegistries.ITEM
+                        .getOptional(entry.getValue())
+                        .ifPresent(item -> this.setItemSlot(entry.getKey(), new ItemStack(item)));
+            }
+        });
     }
 
     protected void applyProfessionEquipment(ProfessionDefinition prof) {

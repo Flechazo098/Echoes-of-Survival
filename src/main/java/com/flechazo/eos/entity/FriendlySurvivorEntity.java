@@ -141,9 +141,8 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         builder.define(GUARD_POS, Optional.empty());
     }
 
-    @Nullable
-    public BlockPos getGuardPos() {
-        return this.entityData.get(GUARD_POS).orElse(null);
+    public Optional<BlockPos> getGuardPos() {
+        return this.entityData.get(GUARD_POS);
     }
 
     public void setGuardPos(@Nullable BlockPos pos) {
@@ -248,16 +247,18 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         @Override public boolean canUse() {
             if (getPatrolMode() != PatrolMode.GUARD) return false;
             if (getTarget() != null) return false;
-            BlockPos pos = getGuardPos();
-            return pos != null && distanceToSqr(pos.getX(), pos.getY(), pos.getZ()) > RETURN_DIST_SQ;
+            return getGuardPos()
+                    .map(pos -> distanceToSqr(pos.getX(), pos.getY(), pos.getZ()) > RETURN_DIST_SQ)
+                    .orElse(false);
         }
         @Override public boolean canContinueToUse() {
             return getTarget() == null && canUse();
         }
         @Override public void start() { this.repath = 0; }
         @Override public void tick() {
-            BlockPos pos = getGuardPos();
-            if (pos == null) return;
+            Optional<BlockPos> guardPos = getGuardPos();
+            if (guardPos.isEmpty()) return;
+            BlockPos pos = guardPos.get();
             if (distanceToSqr(pos.getX(), pos.getY(), pos.getZ()) >= TELEPORT_DIST_SQ) {
                 teleportTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
             } else if (--this.repath <= 0) {
@@ -408,6 +409,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     private boolean canFightCurrentTarget() {
         LivingEntity target = this.getTarget();
         if (target == null || !target.isAlive()) return false;
+        if (isOwnedBy(target)) return false;
         if (!isWithinGuardCombatArea(target)) return false;
         if (this.getLastHurtByMob() == target) return true;
         return canTargetByCurrentAttackMode(target);
@@ -445,6 +447,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     }
 
     private boolean canTargetByCurrentAttackMode(LivingEntity target) {
+        if (isOwnedBy(target)) return false;
         return switch (getAttackMode()) {
             case PASSIVE -> false;
             case NEUTRAL -> target instanceof HostileSurvivorEntity hostile && canTargetHostileSurvivor(hostile)
@@ -460,22 +463,26 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     }
 
     private boolean isSameFaction(LivingEntity target) {
-        UUID ownerId = getRecruitOwnerUuid().orElse(null);
-        if (ownerId == null || target == null) return false;
+        Maybe<UUID> ownerId = getRecruitOwnerUuid();
+        if (ownerId.isEmpty() || target == null) return false;
         if (target instanceof FriendlySurvivorEntity survivor) {
-            return survivor.getRecruitOwnerUuid().map(ownerId::equals).orElse(false);
+            return survivor.getRecruitOwnerUuid().map(ownerId.get()::equals).orElse(false);
         }
         if (target instanceof TamableAnimal tamable) {
-            return ownerId.equals(tamable.getOwnerUUID());
+            return ownerId.get().equals(tamable.getOwnerUUID());
         }
         return false;
     }
 
+    private boolean isOwnedBy(Entity entity) {
+        return entity instanceof Player player && isRecruitOwner(player);
+    }
+
     private boolean isWithinGuardCombatArea(LivingEntity target) {
         if (target == null || getPatrolMode() != PatrolMode.GUARD) return true;
-        BlockPos guardPos = getGuardPos();
-        if (guardPos == null) return true;
-        return target.distanceToSqr(guardPos.getX() + 0.5D, guardPos.getY(), guardPos.getZ() + 0.5D) <= GUARD_COMBAT_RADIUS_SQ;
+        return getGuardPos()
+                .map(guardPos -> target.distanceToSqr(guardPos.getX() + 0.5D, guardPos.getY(), guardPos.getZ() + 0.5D) <= GUARD_COMBAT_RADIUS_SQ)
+                .orElse(true);
     }
 
     private void tickGuardCombatLeash() {
@@ -508,13 +515,26 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
 
     @Override
     public boolean doHurtTarget(Entity target) {
+        if (isOwnedBy(target)) {
+            this.setTarget(null);
+            return false;
+        }
         boolean res = super.doHurtTarget(target);
         if (res) markCombat();
         return res;
     }
 
     @Override
+    public boolean canAttack(LivingEntity target) {
+        return !isOwnedBy(target) && super.canAttack(target);
+    }
+
+    @Override
     public void setTarget(@Nullable LivingEntity target) {
+        if (isOwnedBy(target)) {
+            super.setTarget(null);
+            return;
+        }
         if (!this.level().isClientSide && target != null) {
             if (SurvivorAiUtil.isLowHp(this, 0.35F) && this.getTarget() != null && target != this.getTarget()) {
                 return;
@@ -702,8 +722,8 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         }
         ResourceLocation professionId = profIdOpt.get();
 
-        ProfessionDefinition profession = EosDatapackIndex.profession(professionId).orElse(null);
-        if (profession == null) {
+        var profession = EosDatapackIndex.profession(professionId);
+        if (profession.isEmpty()) {
             this.offers = new MerchantOffers();
             this.offerReputationGains.clear();
             return;
@@ -714,7 +734,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         MerchantOffers nextOffers = new MerchantOffers();
         List<Integer> nextRep = new ArrayList<>();
 
-        List<TradePoolDefinition> pools = EosDatapackIndex.tradePools(professionId, profession.logic().tradePools());
+        List<TradePoolDefinition> pools = EosDatapackIndex.tradePools(professionId, profession.get().logic().tradePools());
         for (TradePoolDefinition pool : pools) {
             for (TradePoolDefinition.Trade trade : pool.trades()) {
                 if (trade == null) continue;
@@ -817,14 +837,14 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         int reputation = ReputationApi.get(player);
         if (!ReputationTiers.canTradeFriendly(reputation)) return true;
 
-        ResourceLocation professionId = getProfessionId().orElse(null);
-        if (professionId == null) return false;
+        Maybe<ResourceLocation> professionId = getProfessionId();
+        if (professionId.isEmpty()) return false;
 
-        ProfessionDefinition profession = EosDatapackIndex.profession(professionId).orElse(null);
-        if (profession == null) return false;
+        var profession = EosDatapackIndex.profession(professionId.get());
+        if (profession.isEmpty()) return false;
 
         boolean hasLockedTrade = false;
-        List<TradePoolDefinition> pools = EosDatapackIndex.tradePools(professionId, profession.logic().tradePools());
+        List<TradePoolDefinition> pools = EosDatapackIndex.tradePools(professionId.get(), profession.get().logic().tradePools());
         for (TradePoolDefinition pool : pools) {
             if (pool == null || pool.trades() == null) continue;
             for (TradePoolDefinition.Trade trade : pool.trades()) {

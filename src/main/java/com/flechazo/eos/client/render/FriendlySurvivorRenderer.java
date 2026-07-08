@@ -3,13 +3,14 @@ package com.flechazo.eos.client.render;
 import com.flechazo.eos.client.skin.MojangSkinCache;
 import com.flechazo.eos.data.EosDatapackIndex;
 import com.flechazo.eos.entity.FriendlySurvivorEntity;
+import com.flechazo.eos.EchoesofSurvival;
 import com.flechazo.hkt.Maybe;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.resources.ResourceLocation;
 
 public class FriendlySurvivorRenderer extends SurvivorPlayerRenderer<FriendlySurvivorEntity> {
     private static final ResourceLocation DEFAULT_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath("echoes", "textures/entity/survivor/friendly_survivor.png");
+            ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "textures/entity/survivor/friendly_survivor.png");
 
     public FriendlySurvivorRenderer(EntityRendererProvider.Context context) {
         super(context);
@@ -29,9 +30,8 @@ public class FriendlySurvivorRenderer extends SurvivorPlayerRenderer<FriendlySur
 
     private static Maybe<SurvivorPlayerSkin> fromProfile(EosDatapackIndex.SkinProfile profile) {
         return profile.uuid()
-                .flatMap(uuid ->
-                        MojangSkinCache.getOrRequest(uuid)
-                                .or(() -> SurvivorPlayerSkin.fromLocalProfile(profile))
-                );
+                .flatMap(uuid -> MojangSkinCache.getOrRequest(uuid)
+                        .or(() -> SurvivorPlayerSkin.fromLocalProfile(profile)))
+                .or(() -> SurvivorPlayerSkin.fromLocalProfile(profile));
     }
 }

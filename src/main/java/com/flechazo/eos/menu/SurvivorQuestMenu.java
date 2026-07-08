@@ -3,7 +3,6 @@ package com.flechazo.eos.menu;
 import com.flechazo.eos.data.EosDatapackIndex;
 import com.flechazo.eos.data.quest.QuestDefinition;
 import com.flechazo.eos.data.reputation.ReputationTiersDefinition;
-import com.flechazo.eos.data.trade.ProfessionDefinition;
 import com.flechazo.eos.entity.FriendlySurvivorEntity;
 import com.flechazo.eos.network.SurvivorQuestStatePayload;
 import com.flechazo.eos.quest.PlayerQuestState;
@@ -176,11 +175,11 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
     public static boolean open(ServerPlayer player, FriendlySurvivorEntity survivor) {
         if (player.level().isClientSide) return false;
 
-        ResourceLocation professionId = survivor.getProfessionId().orElse(null);
-        if (professionId == null) return false;
+        var professionId = survivor.getProfessionId();
+        if (professionId.isEmpty()) return false;
 
-        ProfessionDefinition profession = EosDatapackIndex.profession(professionId).orElse(null);
-        if (profession == null) return false;
+        var profession = EosDatapackIndex.profession(professionId.get());
+        if (profession.isEmpty()) return false;
 
         List<ResourceLocation> quests = currentQuestIdsFor(player, survivor);
 
@@ -221,14 +220,14 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
     }
 
     public static List<ResourceLocation> currentQuestIdsFor(ServerPlayer player, FriendlySurvivorEntity survivor) {
-        ResourceLocation professionId = survivor.getProfessionId().orElse(null);
-        if (professionId == null) return List.of();
+        var professionId = survivor.getProfessionId();
+        if (professionId.isEmpty()) return List.of();
 
-        ProfessionDefinition profession = EosDatapackIndex.profession(professionId).orElse(null);
-        if (profession == null) return List.of();
+        var profession = EosDatapackIndex.profession(professionId.get());
+        if (profession.isEmpty()) return List.of();
 
         return EosDatapackIndex.questIdsFromPools(
-                profession.logic().questPools(),
+                profession.get().logic().questPools(),
                 new Random(questSeed(survivor)),
                 unlockedFor(player)
         );
@@ -240,9 +239,9 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
         for (ResourceLocation questId : quests) {
             PlayerQuestState.QuestProgress progress = active.get(questId);
             if (progress == null) {
-                QuestDefinition def = EosDatapackIndex.quest(questId).orElse(null);
-                if (def != null && def.repeatable() && def.maxRepeats() > 0
-                        && QuestApi.getCompletions(player, questId) >= def.maxRepeats()) {
+                var def = EosDatapackIndex.quest(questId);
+                if (def.isDefined() && def.get().repeatable() && def.get().maxRepeats() > 0
+                        && QuestApi.getCompletions(player, questId) >= def.get().maxRepeats()) {
                     entries.add(new QuestEntry(questId, List.of(), false, false, true));
                 } else {
                     entries.add(QuestEntry.available(questId));
@@ -263,11 +262,11 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
     private static Predicate<ResourceLocation> unlockedFor(ServerPlayer player) {
         int reputation = ReputationApi.get(player);
         return questId -> {
-            QuestDefinition def = EosDatapackIndex.quest(questId).orElse(null);
-            if (def == null) return false;
-            if (def.reputationGate().isEmpty()) return true;
+            var def = EosDatapackIndex.quest(questId);
+            if (def.isEmpty()) return false;
+            if (def.get().reputationGate().isEmpty()) return true;
 
-            int required = def.reputationGate().get().map(
+            int required = def.get().reputationGate().get().map(
                     value -> value,
                     tier -> EosDatapackIndex.reputationTierByName(tier)
                             .map(ReputationTiersDefinition.Tier::min)
