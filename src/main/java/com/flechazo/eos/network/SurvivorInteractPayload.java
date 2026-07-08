@@ -50,6 +50,10 @@ public record SurvivorInteractPayload(int entityId, int action) implements INetw
                     survivor.recruit(player);
                 }
             } else if (this.action == ACTION_PERSONAL) {
+                if (!survivor.isRecruitOwner(player)) {
+                    player.displayClientMessage(Component.translatable("message.echoes_of_survival.mode.not_recruited"), true);
+                    return;
+                }
                 survivor.endMenuInteraction(player);
                 SurvivorPersonalMenu.open(player, survivor);
             } else if (this.action == ACTION_CYCLE_PATROL) {

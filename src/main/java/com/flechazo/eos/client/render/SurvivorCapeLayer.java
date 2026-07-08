@@ -38,17 +38,14 @@ public class SurvivorCapeLayer<T extends AbstractSurvivorEntity> extends RenderL
             return;
         }
 
-        ResourceLocation cape = this.renderer.skin(entity).cape().orElse(null);
-        if (cape == null) {
-            return;
-        }
-
-        poseStack.pushPose();
-        poseStack.translate(0.0F, 0.0F, 0.125F);
-        poseStack.mulPose(Axis.XP.rotationDegrees(entity.isCrouching() ? 28.0F : 6.0F));
-        poseStack.mulPose(Axis.YP.rotationDegrees(180.0F));
-        VertexConsumer vertexConsumer = buffer.getBuffer(RenderType.entitySolid(cape));
-        this.getParentModel().renderCloak(poseStack, vertexConsumer, packedLight, OverlayTexture.NO_OVERLAY);
-        poseStack.popPose();
+        this.renderer.skin(entity).cape().ifPresent(cape -> {
+            poseStack.pushPose();
+            poseStack.translate(0.0F, 0.0F, 0.125F);
+            poseStack.mulPose(Axis.XP.rotationDegrees(entity.isCrouching() ? 28.0F : 6.0F));
+            poseStack.mulPose(Axis.YP.rotationDegrees(180.0F));
+            VertexConsumer vertexConsumer = buffer.getBuffer(RenderType.entitySolid(cape));
+            this.getParentModel().renderCloak(poseStack, vertexConsumer, packedLight, OverlayTexture.NO_OVERLAY);
+            poseStack.popPose();
+        });
     }
 }

@@ -1,6 +1,6 @@
 {
   "type": "neoforge:add_spawns",
-  "biomes": "#echoes:high_risk",
+  "biomes": "#echoes_of_survival:high_risk",
   "spawners": {
     "type": "echoes_of_survival:hostile_survivor",
     "weight": 18,

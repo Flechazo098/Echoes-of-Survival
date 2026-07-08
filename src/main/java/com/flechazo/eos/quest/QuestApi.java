@@ -5,7 +5,6 @@ import com.flechazo.eos.data.quest.QuestDefinition;
 import com.flechazo.eos.data.reputation.ReputationTiersDefinition;
 import com.flechazo.eos.reputation.EosAttachments;
 import com.flechazo.eos.reputation.ReputationApi;
-import com.flechazo.eos.util.EosAliases;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -126,7 +125,7 @@ public final class QuestApi {
             for (int i = 0; i < def.objectives().size(); i++) {
                 QuestDefinition.Objective obj = def.objectives().get(i);
                 if (obj == null || obj.entityTarget().isEmpty()) continue;
-                ResourceLocation required = EosAliases.normalizeToModNamespace(obj.entityTarget().get());
+                ResourceLocation required = obj.entityTarget().get();
                 if (!required.equals(killedType)) continue;
 
                 int current = objectiveProgress.get(i);

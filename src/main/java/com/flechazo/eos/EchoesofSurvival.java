@@ -15,7 +15,6 @@ import org.slf4j.Logger;
 @Mod(EchoesofSurvival.MODID)
 public class EchoesofSurvival {
     public static final String MODID = "echoes_of_survival";
-    public static final String DATAPACK_NAMESPACE = "echoes";
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public EchoesofSurvival(IEventBus bus, ModContainer container) {

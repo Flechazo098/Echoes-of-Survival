@@ -306,14 +306,14 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
             y += 2;
         }
 
-        y += 14;
+        y += 17;
         if (!meetsReputationRequirement(quest)) {
             drawWrapped(graphics, Component.translatable("gui.echoes_of_survival.quest.reputation_required", reputationRequirementValue(quest)), x, y, DETAIL_WIDTH, MUTED);
             graphics.disableScissor();
             return;
         }
         graphics.drawString(this.font, Component.translatable("gui.echoes_of_survival.quest.rewards"), x, y, TEXT, false);
-        y += 27;
+        y += 23;
         int rewardX = x + scaled(4);
         int rewardY = y;
         for (int i = 0; i < quest.rewards().items().size(); i++) {

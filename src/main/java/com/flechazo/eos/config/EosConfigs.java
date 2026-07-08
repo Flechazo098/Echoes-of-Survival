@@ -8,8 +8,6 @@ import cc.sighs.oelib.config.model.ConfigStorageFormat;
 import com.flechazo.eos.EchoesofSurvival;
 import net.minecraft.resources.ResourceLocation;
 
-import java.util.List;
-
 public final class EosConfigs {
     private EosConfigs() {
     }
@@ -20,11 +18,7 @@ public final class EosConfigs {
                     ConfigField.bool("enableSurvivors")
                             .comment("Enable the survivor system, including entities, interaction, and quests.")
                             .defaultValue(true)
-                            .forGetter(SurvivorConfig::enableSurvivors),
-                    ConfigField.list("datapackNamespaces", com.mojang.serialization.Codec.STRING)
-                            .comment("Namespaces allowed for survivor datapack data. Defaults to echoes and echoes_of_survival.")
-                            .defaultValue(List.of(EchoesofSurvival.DATAPACK_NAMESPACE, EchoesofSurvival.MODID))
-                            .forGetter(SurvivorConfig::datapackNamespaces)
+                            .forGetter(SurvivorConfig::enableSurvivors)
             ).apply(instance, SurvivorConfig::new),
             meta -> meta
                     .directory(EchoesofSurvival.MODID)
@@ -38,8 +32,7 @@ public final class EosConfigs {
     }
 
     public record SurvivorConfig(
-            boolean enableSurvivors,
-            List<String> datapackNamespaces
+            boolean enableSurvivors
     ) {
     }
 }

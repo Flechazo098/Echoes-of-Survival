@@ -1,6 +1,6 @@
 {
   "type": "neoforge:add_spawns",
-  "structures": "#echoes:dark_zones",
+  "structures": "#echoes_of_survival:dark_zones",
   "spawners": {
     "type": "echoes_of_survival:hostile_survivor",
     "weight": 35,

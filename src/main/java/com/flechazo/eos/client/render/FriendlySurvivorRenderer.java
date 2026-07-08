@@ -3,6 +3,7 @@ package com.flechazo.eos.client.render;
 import com.flechazo.eos.client.skin.MojangSkinCache;
 import com.flechazo.eos.data.EosDatapackIndex;
 import com.flechazo.eos.entity.FriendlySurvivorEntity;
+import com.flechazo.hkt.Maybe;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.resources.ResourceLocation;
 
@@ -16,31 +17,21 @@ public class FriendlySurvivorRenderer extends SurvivorPlayerRenderer<FriendlySur
 
     @Override
     protected SurvivorPlayerSkin skin(FriendlySurvivorEntity entity) {
-        SurvivorPlayerSkin professionSkin = entity.getProfessionId()
+        return entity.getProfessionId()
                 .flatMap(EosDatapackIndex::profession)
                 .flatMap(profession -> profession.skinLibrary()
                         .flatMap(library -> EosDatapackIndex.pickSkinProfile(library, entity.getUUID())))
-                .map(FriendlySurvivorRenderer::fromProfile)
-                .orElse(null);
-        if (professionSkin != null) {
-            return professionSkin;
-        }
-
-        SurvivorPlayerSkin mojang = entity.getSkinUuid()
-                .flatMap(MojangSkinCache::getOrRequest)
-                .orElse(null);
-        if (mojang != null) {
-            return mojang;
-        }
-
-        return SurvivorPlayerSkin.wide(SurvivorSkins.pick(entity.getUUID(), SurvivorSkins.PRESET_POOL, DEFAULT_TEXTURE));
+                .flatMap(FriendlySurvivorRenderer::fromProfile)
+                .or(() -> entity.getSkinUuid()
+                        .flatMap(MojangSkinCache::getOrRequest))
+                .orElse(SurvivorPlayerSkin.wide(SurvivorSkins.pick(entity.getUUID(), SurvivorSkins.PRESET_POOL, DEFAULT_TEXTURE)));
     }
 
-    private static SurvivorPlayerSkin fromProfile(EosDatapackIndex.SkinProfile profile) {
+    private static Maybe<SurvivorPlayerSkin> fromProfile(EosDatapackIndex.SkinProfile profile) {
         return profile.uuid()
-                .map(MojangSkinCache::getOrRequest)
-                .map(maybe -> maybe.or(() -> SurvivorPlayerSkin.fromLocalProfile(profile)))
-                .flatMap(maybe -> maybe)
-                .orElse(null);
+                .flatMap(uuid ->
+                        MojangSkinCache.getOrRequest(uuid)
+                                .or(() -> SurvivorPlayerSkin.fromLocalProfile(profile))
+                );
     }
 }

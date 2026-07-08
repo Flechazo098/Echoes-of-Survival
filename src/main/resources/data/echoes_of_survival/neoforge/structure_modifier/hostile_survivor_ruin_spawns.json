@@ -1,6 +1,6 @@
 {
   "type": "neoforge:add_spawns",
-  "structures": "#echoes:ruins",
+  "structures": "#echoes_of_survival:ruins",
   "spawners": {
     "type": "echoes_of_survival:hostile_survivor",
     "weight": 35,
