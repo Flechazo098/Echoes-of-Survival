@@ -1,0 +1,98 @@
+{
+  "id": "echoes_of_survival:hostile",
+  "survivor_type": "hostile",
+  "combat": {
+    "enemy_spotted": {
+      "chance": 0.65,
+      "cooldown": 200,
+      "keys": [
+        "bubble.echoes_of_survival.hostile.combat.enemy_spotted.1",
+        "bubble.echoes_of_survival.hostile.combat.enemy_spotted.2"
+      ],
+      "duration": 200
+    },
+    "fire": {
+      "chance": 0.08,
+      "cooldown": 80,
+      "keys": [
+        "bubble.echoes_of_survival.hostile.combat.fire.1",
+        "bubble.echoes_of_survival.hostile.combat.fire.2"
+      ],
+      "duration": 200
+    },
+    "reload": {
+      "chance": 0.45,
+      "cooldown": 160,
+      "keys": [
+        "bubble.echoes_of_survival.hostile.combat.reload.1",
+        "bubble.echoes_of_survival.hostile.combat.reload.2"
+      ],
+      "duration": 200
+    },
+    "hurt": {
+      "chance": 0.35,
+      "cooldown": 100,
+      "keys": [
+        "bubble.echoes_of_survival.hostile.combat.hurt.1",
+        "bubble.echoes_of_survival.hostile.combat.hurt.2"
+      ],
+      "duration": 200
+    },
+    "kill": {
+      "chance": 0.5,
+      "cooldown": 120,
+      "keys": [
+        "bubble.echoes_of_survival.hostile.combat.kill.1",
+        "bubble.echoes_of_survival.hostile.combat.kill.2"
+      ],
+      "duration": 200
+    },
+    "target_lost": {
+      "chance": 0.45,
+      "cooldown": 200,
+      "keys": [
+        "bubble.echoes_of_survival.hostile.combat.target_lost.1",
+        "bubble.echoes_of_survival.hostile.combat.target_lost.2"
+      ],
+      "duration": 200
+    }
+  },
+  "environment": {
+    "night": {
+      "chance": 0.08,
+      "cooldown": 1200,
+      "keys": [
+        "bubble.echoes_of_survival.hostile.environment.night.1",
+        "bubble.echoes_of_survival.hostile.environment.night.2"
+      ],
+      "duration": 200
+    },
+    "rain": {
+      "chance": 0.1,
+      "cooldown": 1200,
+      "keys": [
+        "bubble.echoes_of_survival.hostile.environment.rain.1",
+        "bubble.echoes_of_survival.hostile.environment.rain.2"
+      ],
+      "duration": 200
+    },
+    "low_health": {
+      "chance": 0.2,
+      "cooldown": 600,
+      "keys": [
+        "bubble.echoes_of_survival.hostile.environment.low_health.1",
+        "bubble.echoes_of_survival.hostile.environment.low_health.2"
+      ],
+      "duration": 200
+    },
+    "patrol": {
+      "chance": 0.06,
+      "cooldown": 1200,
+      "keys": [
+        "bubble.echoes_of_survival.hostile.environment.patrol.1",
+        "bubble.echoes_of_survival.hostile.environment.patrol.2"
+      ],
+      "duration": 200
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "quest_id": "echoes_of_survival:scavenger_salvage",
+  "title": "echoes_of_survival.quest.scavenger_salvage.title",
+  "description": [
+    "echoes_of_survival.quest.scavenger_salvage.desc.1",
+    "echoes_of_survival.quest.scavenger_salvage.desc.2"
+  ],
+  "type": "echoes_of_survival:submit_items",
+  "objectives": [
+    { "item": "minecraft:rotten_flesh", "count": 24 }
+  ],
+  "rewards": {
+    "items": [
+      { "id": "minecraft:bread", "count": 6 }
+    ],
+    "reputation": 8
+  }
+}

@@ -1,6 +1,7 @@
 package com.flechazo.eos.entity;
 
 import com.flechazo.eos.data.EosDatapackIndex;
+import com.flechazo.eos.data.bubble.SurvivorBubbleDefinition;
 import com.flechazo.eos.data.trade.ProfessionDefinition;
 import com.flechazo.eos.entity.ai.goal.SurvivorAiUtil;
 import com.flechazo.hkt.Maybe;
@@ -34,7 +35,8 @@ import net.neoforged.neoforge.items.ItemStackHandler;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 public abstract class AbstractSurvivorEntity extends WanderingTrader
@@ -54,6 +56,9 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
 
     protected boolean chargingCrossbow = false;
     protected int lastCombatTick = -100000;
+    @Nullable private LivingEntity bubbleTrackedTarget;
+    private int bubbleLastTargetSeenTick = -100000;
+    private final Map<String, Integer> bubbleCooldowns = new HashMap<>();
 
     public final ItemStackHandler tacticalInventory = new ItemStackHandler(10);
 
@@ -180,14 +185,19 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
     @Override
     public boolean hurt(DamageSource s, float a) {
         boolean r = super.hurt(s, a);
-        if (r) markCombat();
+        if (r) {
+            markCombat();
+            emitBubbleEvent("combat", "hurt");
+        }
         return r;
     }
 
     @Override
     public boolean doHurtTarget(Entity t) {
         boolean r = super.doHurtTarget(t);
-        if (r) markCombat();
+        if (r) {
+            markCombat();
+        }
         return r;
     }
 
@@ -312,13 +322,53 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
     private int shieldActiveTicks = 0;
 
     protected void showBubble(Component message) {
+        showBubble(message, 200);
+    }
+
+    protected void showBubble(Component message, int duration) {
         String author = this.getUUID() + "_" + this.tickCount;
         var payload = new AddBubblePayload(
-                this.getUUID(), author, message.getString());
+                this.getUUID(), author, message.getString(), duration);
         for (var player : this.level().getEntitiesOfClass(ServerPlayer.class,
                 this.getBoundingBox().inflate(100))) {
             player.connection.send(payload);
         }
+    }
+
+    public void emitBubbleEvent(String category, String event) {
+        if (this.level().isClientSide || category == null || event == null) return;
+        if (("interaction".equals(category) || "status".equals(category)) && !(this instanceof FriendlySurvivorEntity)) return;
+        SurvivorBubbleDefinition.SurvivorType survivorType = bubbleSurvivorType();
+        String id = survivorType.serializedName() + "." + category + "." + event;
+        if (this.tickCount < this.bubbleCooldowns.getOrDefault(id, 0)) return;
+        EosDatapackIndex.survivorBubble(survivorType, category, event).ifPresent(entry -> {
+            if (this.random.nextDouble() > entry.chance()) return;
+            String key = entry.keys().get(this.random.nextInt(entry.keys().size()));
+            showBubble(Component.translatable(key), entry.duration());
+            this.bubbleCooldowns.put(id, this.tickCount + entry.cooldown());
+        });
+    }
+
+    private SurvivorBubbleDefinition.SurvivorType bubbleSurvivorType() {
+        if (this instanceof FriendlySurvivorEntity) return SurvivorBubbleDefinition.SurvivorType.FRIENDLY;
+        if (this instanceof HostileSurvivorEntity) return SurvivorBubbleDefinition.SurvivorType.HOSTILE;
+        return SurvivorBubbleDefinition.SurvivorType.NEUTRAL;
+    }
+    private void tickBubbleEvents() {
+        LivingEntity target = this.getTarget();
+        if (target != null && target.isAlive()) {
+            if (target != this.bubbleTrackedTarget) emitBubbleEvent("combat", "enemy_spotted");
+            this.bubbleTrackedTarget = target;
+            this.bubbleLastTargetSeenTick = this.tickCount;
+        } else if (this.bubbleTrackedTarget != null && this.tickCount - this.bubbleLastTargetSeenTick > 60) {
+            emitBubbleEvent("combat", "target_lost");
+            this.bubbleTrackedTarget = null;
+        }
+        if (this.tickCount % 200 != 0) return;
+        if (this.level().isNight()) emitBubbleEvent("environment", "night");
+        if (this.level().isRainingAt(this.blockPosition())) emitBubbleEvent("environment", "rain");
+        if (this.getHealth() <= this.getMaxHealth() * 0.30F) emitBubbleEvent("environment", "low_health");
+        if (this.getNavigation().isInProgress() && this.getTarget() == null) emitBubbleEvent("environment", "patrol");
     }
 
     @Override
@@ -327,6 +377,7 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
         if (!this.level().isClientSide) {
             ensureSkinUsernameAssigned();
             tickReactiveShield();
+            tickBubbleEvents();
         }
     }
 

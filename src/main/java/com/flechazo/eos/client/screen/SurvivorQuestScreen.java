@@ -10,18 +10,25 @@ import com.flechazo.hkt.Maybe;
 import com.mojang.datafixers.util.Either;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMenu> {
     private static final float SCREEN_SCALE = 1.5F;
@@ -47,10 +54,12 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
     private static final int DETAIL_REWARD_ICON_Y = DETAIL_REWARD_TITLE_Y + scaled(13);
     private static final int DETAIL_CONTENT_BOTTOM = DETAIL_REWARD_TITLE_Y - scaled(5);
     private static final int DETAIL_CONTENT_HEIGHT = DETAIL_CONTENT_BOTTOM - DETAIL_CONTENT_TOP;
+    private static final int OBJECTIVE_ICON_SIZE = 16;
+    private static final float OBJECTIVE_ITEM_SCALE = 0.875F;
+    private static final int OBJECTIVE_ENTITY_SCALE = 7;
+    private static final int OBJECTIVE_ENTITY_CLIP_PADDING = 2;
+    private static final int OBJECTIVE_TEXT_INDENT = scaled(8) + OBJECTIVE_ICON_SIZE + 4;
     private static final int DETAIL_SCROLL_STEP = 12;
-    private static final int SCROLL_START_PAUSE_TICKS = 8;
-    private static final int SCROLL_END_PAUSE_TICKS = 8;
-    private static final int SCROLL_PIXELS_PER_TICK = 1;
     private static final int TEXT = 0xFF101010;
     private static final int MUTED = 0xFF303030;
     private static final int GOOD = 0xFF1F6E2F;
@@ -63,6 +72,9 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
     private static final ResourceLocation SLOT = ResourceLocation.withDefaultNamespace("container/slot");
 
     private final List<TexturedButton> questButtons = new ArrayList<>();
+    private final List<HoverTarget> hoverTargets = new ArrayList<>();
+    private final Map<ResourceLocation, LivingEntity> objectiveEntities = new HashMap<>();
+    private final Set<ResourceLocation> unavailableObjectiveEntities = new HashSet<>();
     private final Inventory playerInventory;
     private final long textSeed;
     private TexturedButton actionButton;
@@ -276,6 +288,7 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
 
     @Override
     protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
+        this.hoverTargets.clear();
         Component screenTitle = trimToWidth(this.title, scaled(184));
         int titleX = (this.imageWidth - this.font.width(screenTitle)) / 2;
         graphics.drawString(this.font, screenTitle, titleX, scaled(6), TEXT, false);
@@ -307,7 +320,11 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
         for (int i = 0; i < quest.objectives().size(); i++) {
             QuestDefinition.Objective objective = quest.objectives().get(i);
             int progress = i < entry.objectiveProgress().size() ? entry.objectiveProgress().get(i) : 0;
-            y = drawWrapped(graphics, objectiveText(objective, progress), x + scaled(8), y, DETAIL_WIDTH - scaled(8), objectiveDone(objective, progress) ? GOOD : MUTED);
+            int objectiveTop = y;
+            renderObjectiveIcon(graphics, objective, x + scaled(8) + 3, objectiveTop - 4);
+            int textBottom = drawWrapped(graphics, objectiveText(objective, progress), x + OBJECTIVE_TEXT_INDENT, y,
+                    DETAIL_WIDTH - OBJECTIVE_TEXT_INDENT, objectiveDone(objective, progress) ? GOOD : MUTED);
+            y = Math.max(textBottom, objectiveTop + OBJECTIVE_ICON_SIZE);
             y += 2;
         }
 
@@ -358,7 +375,8 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
         for (int i = 0; i < quest.objectives().size(); i++) {
             QuestDefinition.Objective objective = quest.objectives().get(i);
             int progress = i < entry.objectiveProgress().size() ? entry.objectiveProgress().get(i) : 0;
-            height += this.font.split(objectiveText(objective, progress), DETAIL_WIDTH - scaled(8)).size() * 10;
+            int textHeight = this.font.split(objectiveText(objective, progress), DETAIL_WIDTH - OBJECTIVE_TEXT_INDENT).size() * 10;
+            height += Math.max(OBJECTIVE_ICON_SIZE, textHeight);
             height += 2;
         }
         height += 14;
@@ -402,6 +420,93 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
         graphics.blitSprite(SLOT, x - 1, y - 1, 18, 18);
         graphics.renderItem(stack, x, y);
         graphics.renderItemDecorations(this.font, stack, x, y);
+        addItemHoverTarget(x - 1, y - 1, 18, 18, stack, false);
+    }
+
+    private void renderObjectiveIcon(GuiGraphics graphics, QuestDefinition.Objective objective, int x, int y) {
+        if (!isObjectiveIconVisible(y)) return;
+
+        if (objective.itemTarget().isDefined()) {
+            BuiltInRegistries.ITEM.getOptional(objective.itemTarget().get()).ifPresent(item -> {
+                ItemStack stack = item.getDefaultInstance();
+                float offset = OBJECTIVE_ICON_SIZE * (1.0F - OBJECTIVE_ITEM_SCALE) / 2.0F;
+                graphics.pose().pushPose();
+                graphics.pose().translate(x + offset, y + offset, 0.0F);
+                graphics.pose().scale(OBJECTIVE_ITEM_SCALE, OBJECTIVE_ITEM_SCALE, 1.0F);
+                graphics.renderItem(stack, 0, 0);
+                graphics.pose().popPose();
+                addItemHoverTarget(x, y, OBJECTIVE_ICON_SIZE, OBJECTIVE_ICON_SIZE, stack, true);
+            });
+            return;
+        }
+        if (objective.entityTarget().isEmpty()) return;
+
+        ResourceLocation entityId = objective.entityTarget().get();
+        LivingEntity entity = objectiveEntity(entityId);
+        if (entity == null) return;
+
+        graphics.pose().pushPose();
+        graphics.pose().translate(-this.leftPos, -this.topPos, 0.0F);
+        int screenX = this.leftPos + x;
+        int screenY = this.topPos + y;
+        InventoryScreen.renderEntityInInventoryFollowsAngle(
+                graphics,
+                screenX - OBJECTIVE_ENTITY_CLIP_PADDING,
+                screenY - OBJECTIVE_ENTITY_CLIP_PADDING,
+                screenX + OBJECTIVE_ICON_SIZE + OBJECTIVE_ENTITY_CLIP_PADDING,
+                screenY + OBJECTIVE_ICON_SIZE + OBJECTIVE_ENTITY_CLIP_PADDING,
+                OBJECTIVE_ENTITY_SCALE, 0.0F, 0.15F, 0.0F, entity
+        );
+        graphics.pose().popPose();
+        addTextHoverTarget(x, y, OBJECTIVE_ICON_SIZE, OBJECTIVE_ICON_SIZE,
+                Component.translatable(entity.getType().getDescriptionId()), true);
+    }
+
+    private LivingEntity objectiveEntity(ResourceLocation id) {
+        LivingEntity cached = this.objectiveEntities.get(id);
+        if (cached != null) return cached;
+        if (this.unavailableObjectiveEntities.contains(id) || this.minecraft == null || this.minecraft.level == null) return null;
+
+        Optional<EntityType<?>> type = BuiltInRegistries.ENTITY_TYPE.getOptional(id);
+        Entity entity = type.map(value -> value.create(this.minecraft.level)).orElse(null);
+        if (entity instanceof LivingEntity living) {
+            this.objectiveEntities.put(id, living);
+            return living;
+        }
+        this.unavailableObjectiveEntities.add(id);
+        return null;
+    }
+
+    private boolean isObjectiveIconVisible(int y) {
+        return y + OBJECTIVE_ICON_SIZE > DETAIL_CONTENT_TOP && y < DETAIL_CONTENT_BOTTOM;
+    }
+
+    private void addItemHoverTarget(int x, int y, int width, int height, ItemStack stack, boolean clipToDetail) {
+        addHoverTarget(x, y, width, height, stack, Component.empty(), clipToDetail);
+    }
+
+    private void addTextHoverTarget(int x, int y, int width, int height, Component text, boolean clipToDetail) {
+        addHoverTarget(x, y, width, height, ItemStack.EMPTY, text, clipToDetail);
+    }
+
+    private void addHoverTarget(int x, int y, int width, int height, ItemStack stack, Component text, boolean clipToDetail) {
+        int top = clipToDetail ? Math.max(y, DETAIL_CONTENT_TOP) : y;
+        int bottom = clipToDetail ? Math.min(y + height, DETAIL_CONTENT_BOTTOM) : y + height;
+        if (bottom <= top) return;
+        this.hoverTargets.add(new HoverTarget(this.leftPos + x, this.topPos + top, width, bottom - top, stack, text));
+    }
+
+    private void renderCustomTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        for (int i = this.hoverTargets.size() - 1; i >= 0; i--) {
+            HoverTarget target = this.hoverTargets.get(i);
+            if (!target.contains(mouseX, mouseY)) continue;
+            if (!target.stack().isEmpty()) {
+                graphics.renderTooltip(this.font, target.stack(), mouseX, mouseY);
+            } else if (!target.text().getString().isEmpty()) {
+                graphics.renderTooltip(this.font, target.text(), mouseX, mouseY);
+            }
+            return;
+        }
     }
 
     private Component objectiveText(QuestDefinition.Objective objective, int progress) {
@@ -502,11 +607,18 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
         CLAIM
     }
 
+    private record HoverTarget(int x, int y, int width, int height, ItemStack stack, Component text) {
+        private boolean contains(int mouseX, int mouseY) {
+            return mouseX >= this.x && mouseX < this.x + this.width && mouseY >= this.y && mouseY < this.y + this.height;
+        }
+    }
+
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         this.renderBackground(graphics, mouseX, mouseY, partialTick);
         super.render(graphics, mouseX, mouseY, partialTick);
         this.renderTooltip(graphics, mouseX, mouseY);
+        this.renderCustomTooltip(graphics, mouseX, mouseY);
     }
 }

@@ -8,12 +8,14 @@ import com.atsuishio.superbwarfare.tools.MillisTimer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.goal.Goal;
+import com.flechazo.eos.entity.AbstractSurvivorEntity;
 
 import java.util.EnumSet;
 
 public class SurvivorGunAttackGoal extends Goal {
     private final Mob mob;
     private int aimTime;
+    private boolean reloading;
     private final MillisTimer shootTimer = new MillisTimer();
     private static final int AIM_THRESHOLD = 5;
     private final double shootRangeSqr;
@@ -95,7 +97,13 @@ public class SurvivorGunAttackGoal extends Goal {
         gunData.tick(this.mob, true);
 
         if (gunData.shouldStartReloading(this.mob)) {
+            if (!this.reloading && this.mob instanceof AbstractSurvivorEntity survivor) {
+                survivor.emitBubbleEvent("combat", "reload");
+            }
+            this.reloading = true;
             gunData.startReload();
+        } else {
+            this.reloading = false;
         }
         if (gunData.shouldStartBolt()) {
             gunData.startBolt();
@@ -127,6 +135,9 @@ public class SurvivorGunAttackGoal extends Goal {
             long progress = this.shootTimer.getProgress();
             do {
                 gunData.shoot(this.mob, 0.5, false, target.getUUID());
+                if (this.mob instanceof AbstractSurvivorEntity survivor) {
+                    survivor.emitBubbleEvent("combat", "fire");
+                }
                 progress -= cooldown;
             } while (progress - cooldown > 0);
             this.shootTimer.setProgress(progress);

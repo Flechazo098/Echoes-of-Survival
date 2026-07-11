@@ -3,6 +3,7 @@ package com.flechazo.eos.data;
 import cc.sighs.oelib.data.DataRegistry;
 import com.flechazo.eos.EchoesofSurvival;
 import com.flechazo.eos.data.armor.ArmorSetDefinition;
+import com.flechazo.eos.data.bubble.SurvivorBubbleDefinition;
 import com.flechazo.eos.data.common.HealingPotionList;
 import com.flechazo.eos.data.quest.QuestDefinition;
 import com.flechazo.eos.data.quest.QuestPoolDefinition;
@@ -29,5 +30,6 @@ public final class EosDataTypes {
         DataRegistry.registerWithNamespaces(ArmorSetDefinition.class, ArmorSetDefinition.CODEC, namespaces);
         DataRegistry.registerWithNamespaces(SkinLibraryDefinition.class, SkinLibraryDefinition.CODEC, namespaces);
         DataRegistry.registerWithNamespaces(HealingPotionList.class, HealingPotionList.CODEC, namespaces);
+        DataRegistry.registerWithNamespaces(SurvivorBubbleDefinition.class, SurvivorBubbleDefinition.CODEC, namespaces);
     }
 }

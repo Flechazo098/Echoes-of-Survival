@@ -2,18 +2,29 @@ package com.flechazo.eos;
 
 import cc.sighs.oelib.data.DataManager;
 import com.flechazo.eos.data.quest.QuestDefinition;
+import com.flechazo.eos.data.trade.ProfessionDefinition;
+import com.flechazo.eos.entity.EosEntityTypes;
+import com.flechazo.eos.entity.FriendlySurvivorEntity;
 import com.flechazo.eos.quest.QuestApi;
 import com.flechazo.eos.reputation.ReputationApi;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
+import net.minecraft.commands.arguments.coordinates.Vec3Argument;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.Comparator;
+import java.util.Objects;
 
 public final class EosCommands {
     private EosCommands() {
@@ -98,6 +109,69 @@ public final class EosCommands {
                                                     );
                                                     return ok ? 1 : 0;
                                                 }))))
+                        .then(Commands.literal("survivor")
+                                .then(Commands.literal("spawn")
+                                        .then(Commands.argument("profession", ResourceLocationArgument.id())
+                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggestResource(
+                                                        DataManager.getDataList(ProfessionDefinition.class).stream()
+                                                                .map(ProfessionDefinition::id)
+                                                                .filter(Objects::nonNull),
+                                                        builder
+                                                ))
+                                                .executes(ctx -> spawnFriendlySurvivor(
+                                                        ctx.getSource(),
+                                                        ResourceLocationArgument.getId(ctx, "profession"),
+                                                        ctx.getSource().getPosition()
+                                                ))
+                                                .then(Commands.argument("pos", Vec3Argument.vec3())
+                                                        .executes(ctx -> spawnFriendlySurvivor(
+                                                                ctx.getSource(),
+                                                                ResourceLocationArgument.getId(ctx, "profession"),
+                                                                Vec3Argument.getVec3(ctx, "pos")
+                                                        ))))))
         );
+    }
+
+    private static int spawnFriendlySurvivor(CommandSourceStack source, ResourceLocation professionId, Vec3 pos) {
+        ProfessionDefinition profession = DataManager.getDataList(ProfessionDefinition.class).stream()
+                .filter(def -> def != null && professionId.equals(def.id()))
+                .findFirst()
+                .orElse(null);
+        if (profession == null) {
+            source.sendFailure(Component.literal("Unknown survivor profession: " + professionId));
+            return 0;
+        }
+
+        BlockPos blockPos = BlockPos.containing(pos);
+        if (!Level.isInSpawnableBounds(blockPos)) {
+            source.sendFailure(Component.translatable("commands.summon.invalidPosition"));
+            return 0;
+        }
+
+        ServerLevel level = source.getLevel();
+        FriendlySurvivorEntity survivor = EosEntityTypes.FRIENDLY_SURVIVOR.get().create(level);
+        if (survivor == null) {
+            source.sendFailure(Component.literal("Failed to create friendly survivor"));
+            return 0;
+        }
+
+        survivor.moveTo(pos.x, pos.y, pos.z, source.getRotation().y, 0.0F);
+        survivor.setProfessionId(professionId);
+        survivor.finalizeSpawn(
+                level,
+                level.getCurrentDifficultyAt(blockPos),
+                MobSpawnType.COMMAND,
+                null
+        );
+        if (!level.addFreshEntity(survivor)) {
+            source.sendFailure(Component.literal("Failed to add friendly survivor to the world"));
+            return 0;
+        }
+
+        source.sendSuccess(
+                () -> Component.literal("Spawned friendly survivor with profession " + professionId),
+                true
+        );
+        return 1;
     }
 }

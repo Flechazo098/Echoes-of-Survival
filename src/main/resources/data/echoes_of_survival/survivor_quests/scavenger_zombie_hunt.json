@@ -1,0 +1,15 @@
+{
+  "quest_id": "echoes_of_survival:scavenger_zombie_hunt",
+  "title": "echoes_of_survival.quest.scavenger_zombie_hunt.title",
+  "description": "echoes_of_survival.quest.scavenger_zombie_hunt.desc",
+  "type": "echoes_of_survival:kill_entities",
+  "objectives": [
+    { "entity": "minecraft:zombie", "count": 6 }
+  ],
+  "rewards": {
+    "items": [
+      { "id": "minecraft:arrow", "count": 24 }
+    ],
+    "reputation": 10
+  }
+}

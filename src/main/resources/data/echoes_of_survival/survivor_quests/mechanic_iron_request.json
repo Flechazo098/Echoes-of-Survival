@@ -1,0 +1,19 @@
+{
+  "quest_id": "echoes_of_survival:mechanic_iron_request",
+  "title": "echoes_of_survival.quest.mechanic_iron_request.title",
+  "description": [
+    "echoes_of_survival.quest.mechanic_iron_request.desc.1",
+    "echoes_of_survival.quest.mechanic_iron_request.desc.2"
+  ],
+  "type": "echoes_of_survival:submit_items",
+  "require_reputation": "friendly",
+  "objectives": [
+    { "item": "minecraft:iron_ingot", "count": 12 }
+  ],
+  "rewards": {
+    "items": [
+      { "id": "minecraft:anvil", "count": 1 }
+    ],
+    "reputation": 25
+  }
+}

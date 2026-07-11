@@ -1,0 +1,32 @@
+{
+  "id": "echoes_of_survival:scavenger",
+  "skin": "echoes_of_survival:default",
+  "hostile_skin": "echoes_of_survival:default",
+  "neutral_skin": "echoes_of_survival:default",
+  "initial_equipment": {
+    "armor_set": "echoes_of_survival:scavenger_tier_1",
+    "tactical_items": [
+      {
+        "id": "superbwarfare:hunting_rifle",
+        "components": {}
+      },
+      {
+        "id": "minecraft:splash_potion",
+        "components": {
+          "minecraft:potion_contents": {
+            "potion": "minecraft:regeneration"
+          }
+        }
+      }
+    ]
+  },
+  "logic": {
+    "trade_pools": [
+      "echoes_of_survival:scavenger_goods"
+    ],
+    "quest_pools": [
+      "echoes_of_survival:scavenger_tasks"
+    ],
+    "reputation_on_death": -20
+  }
+}

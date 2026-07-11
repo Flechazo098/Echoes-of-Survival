@@ -1,0 +1,29 @@
+{
+  "id": "echoes_of_survival:mechanic",
+  "skin": "echoes_of_survival:default",
+  "hostile_skin": "echoes_of_survival:default",
+  "neutral_skin": "echoes_of_survival:default",
+  "initial_equipment": {
+    "armor_set": "echoes_of_survival:scavenger_tier_1",
+    "tactical_items": [
+      {"id": "minecraft:totem_of_undying"},
+      {
+        "id": "minecraft:splash_potion",
+        "components": {
+          "minecraft:potion_contents": {
+            "potion": "minecraft:regeneration"
+          }
+        }
+      }
+    ]
+  },
+  "logic": {
+    "trade_pools": [
+      "echoes_of_survival:mechanic_tools"
+    ],
+    "quest_pools": [
+      "echoes_of_survival:mechanic_tasks"
+    ],
+    "reputation_on_death": -40
+  }
+}

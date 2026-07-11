@@ -1,0 +1,10 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:ancient_city",
+    "minecraft:mineshaft",
+    "minecraft:mineshaft_mesa",
+    "minecraft:stronghold",
+    "minecraft:trial_chambers"
+  ]
+}

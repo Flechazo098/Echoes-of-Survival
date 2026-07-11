@@ -2,6 +2,7 @@ package com.flechazo.eos;
 
 
 import com.flechazo.eos.entity.FriendlySurvivorEntity;
+import com.flechazo.eos.entity.AbstractSurvivorEntity;
 import com.flechazo.eos.quest.QuestApi;
 import com.flechazo.eos.reputation.EosAttachments;
 import net.minecraft.server.level.ServerPlayer;
@@ -33,8 +34,13 @@ public final class EosGameEvents {
     }
 
     private static void onLivingDeath(LivingDeathEvent event) {
-        if (!(event.getSource().getEntity() instanceof ServerPlayer player)) return;
-        QuestApi.onKill(player, event.getEntity());
+        Entity attacker = event.getSource().getEntity();
+        if (attacker instanceof ServerPlayer player) {
+            QuestApi.onKill(player, event.getEntity());
+        }
+        if (attacker instanceof AbstractSurvivorEntity survivor && attacker != event.getEntity()) {
+            survivor.emitBubbleEvent("combat", "kill");
+        }
     }
 
     private static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {

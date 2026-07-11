@@ -1,0 +1,17 @@
+{
+  "values": [
+    "potion:healing",
+    "potion:strong_healing",
+    "potion:regeneration",
+    "potion:long_regeneration",
+    "potion:strong_regeneration",
+    "splash:healing",
+    "splash:strong_healing",
+    "splash:regeneration",
+    "splash:long_regeneration",
+    "splash:strong_regeneration",
+    "lingering:healing",
+    "lingering:strong_healing",
+    "lingering:regeneration"
+  ]
+}

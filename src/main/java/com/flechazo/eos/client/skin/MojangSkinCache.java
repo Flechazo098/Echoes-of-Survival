@@ -5,10 +5,8 @@ import com.flechazo.eos.client.render.SurvivorPlayerSkin;
 import com.flechazo.hkt.Either;
 import com.flechazo.hkt.Maybe;
 import com.flechazo.hkt.Unit;
-import com.flechazo.hkt.Validated;
-import com.flechazo.hkt.business.control.ValidatedNel;
 import com.flechazo.hkt.business.core.Attempts;
-import com.flechazo.hkt.business.data.NonEmptyList;
+import com.flechazo.hkt.business.effect.CompletableFuturePath;
 import com.flechazo.hkt.business.effect.Task;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -29,11 +27,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
-import java.util.LinkedHashSet;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Executors;
@@ -59,24 +61,33 @@ public final class MojangSkinCache {
 
     private static final ConcurrentHashMap<UUID, SurvivorPlayerSkin> LOADED = new ConcurrentHashMap<>();
     private static final Set<UUID> IN_FLIGHT = ConcurrentHashMap.newKeySet();
-    private static Validated<NonEmptyList<UUID>, Unit> failed = Validated.valid(Unit.INSTANCE);
+    private static final Map<UUID, SkinFailure> FAILED = new ConcurrentHashMap<>();
     private static boolean retryScheduled;
 
     public static Maybe<SurvivorPlayerSkin> getOrRequest(UUID uuid) {
         if (uuid == null) return Maybe.none();
         SurvivorPlayerSkin existing = LOADED.get(uuid);
         if (existing != null) return Maybe.some(existing);
-        request(uuid);
+        if (!FAILED.containsKey(uuid)) {
+            request(uuid);
+        }
         return Maybe.none();
     }
 
     private static void request(UUID uuid) {
         if (uuid == null || !IN_FLIGHT.add(uuid)) return;
         load(uuid)
-                .peekFailure(err -> recordFailure(uuid))
                 .unsafeRunAsync(EXECUTOR)
-                .whenComplete((ignored, err) -> {
+                .whenComplete((ignored, error) -> {
                     IN_FLIGHT.remove(uuid);
+                    if (error == null) {
+                        SkinFailure previous = FAILED.remove(uuid);
+                        if (previous != null) {
+                            EchoesofSurvival.LOGGER.info("Mojang skin loaded after retry: {}", uuid);
+                        }
+                    } else {
+                        recordFailure(uuid, error);
+                    }
                     scheduleRetryIfNeeded();
                 });
     }
@@ -85,28 +96,74 @@ public final class MojangSkinCache {
         return readFromDisk(uuid)
                 .flatMap(cached -> cached.isDefined()
                         ? registerDynamic(uuid, cached.get())
-                        : fetchFromMojang(uuid)
-                                .flatMap(assets -> writeToDisk(uuid, assets)
-                                        .recover(err -> Unit.INSTANCE)
-                                        .map(ignored -> assets))
-                                .flatMap(assets -> registerDynamic(uuid, assets)));
+                                .recoverWith(error -> invalidateCache(uuid, error)
+                                        .then(() -> fetchRegisterAndCache(uuid)))
+                        : fetchRegisterAndCache(uuid));
     }
 
-    private static synchronized void recordFailure(UUID uuid) {
-        failed = failed.combine(ValidatedNel.invalid(uuid), NonEmptyList.semigroup());
+    private static Task<Unit> fetchRegisterAndCache(UUID uuid) {
+        return fetchFromMojang(uuid)
+                .flatMap(assets -> registerDynamic(uuid, assets)
+                        .then(() -> writeToDisk(uuid, assets)
+                                .recover(error -> {
+                                    EchoesofSurvival.LOGGER.warn(
+                                            "Mojang skin {} loaded, but disk cache write failed: {}",
+                                            uuid,
+                                            describeFailure(error)
+                                    );
+                                    EchoesofSurvival.LOGGER.debug("Mojang skin cache write failure details for " + uuid, error);
+                                    return Unit.INSTANCE;
+                                })));
+    }
+
+    private static Task<Unit> invalidateCache(UUID uuid, Throwable error) {
+        return Task.delay(() -> {
+            EchoesofSurvival.LOGGER.warn(
+                    "Cached Mojang skin {} could not be registered; deleting cache and downloading again: {}",
+                    uuid,
+                    describeFailure(error)
+            );
+            deleteIfExists(cacheFile(uuid));
+            deleteIfExists(capeFile(uuid));
+            deleteIfExists(elytraFile(uuid));
+            deleteIfExists(modelFile(uuid));
+            return Unit.INSTANCE;
+        });
+    }
+
+    private static void deleteIfExists(Path path) {
+        Attempts.either(() -> Files.deleteIfExists(path))
+                .peekLeft(error -> EchoesofSurvival.LOGGER.debug(
+                        "Failed to delete invalid Mojang skin cache file " + path,
+                        error
+                ));
+    }
+
+    private static void recordFailure(UUID uuid, Throwable error) {
+        Throwable cause = unwrap(error);
+        SkinFailure failure = FAILED.compute(uuid, (ignored, previous) -> new SkinFailure(
+                previous == null ? 1 : previous.attempts() + 1,
+                describeFailure(cause)
+        ));
+        EchoesofSurvival.LOGGER.warn(
+                "Mojang skin request failed for {} (attempt {}): {}",
+                uuid,
+                failure.attempts(),
+                failure.reason()
+        );
+        EchoesofSurvival.LOGGER.debug("Mojang skin request failure details for {}", uuid, cause);
     }
 
     private static void scheduleRetryIfNeeded() {
         if (!IN_FLIGHT.isEmpty()) return;
         synchronized (MojangSkinCache.class) {
-            if (retryScheduled || failed.isValid()) return;
-            List<UUID> pending = failed.error().toList();
-            if (pending.isEmpty()) return;
+            if (retryScheduled || FAILED.isEmpty()) return;
             retryScheduled = true;
             EchoesofSurvival.LOGGER.warn(
-                    "Mojang skin failed for {} UUID(s), retrying in 5 min: {}",
-                    pending.size(),
-                    pending);
+                    "Mojang skin retry scheduled in {} min for {} unique UUID(s): {}",
+                    RETRY_DELAY.toMinutes(),
+                    FAILED.size(),
+                    FAILED.keySet());
             EXECUTOR.schedule(MojangSkinCache::retryFailures, RETRY_DELAY.toMinutes(), TimeUnit.MINUTES);
         }
     }
@@ -114,15 +171,32 @@ public final class MojangSkinCache {
     private static void retryFailures() {
         List<UUID> pending;
         synchronized (MojangSkinCache.class) {
-            pending = failed.isInvalid() ? List.copyOf(new LinkedHashSet<>(failed.error().toList())) : List.of();
-            failed = Validated.valid(Unit.INSTANCE);
+            pending = new ArrayList<>(FAILED.keySet());
             retryScheduled = false;
+        }
+        if (!pending.isEmpty()) {
+            EchoesofSurvival.LOGGER.info("Retrying Mojang skin download for {} unique UUID(s): {}", pending.size(), pending);
         }
         for (UUID uuid : pending) {
             if (!LOADED.containsKey(uuid)) {
                 request(uuid);
             }
         }
+    }
+
+    private static Throwable unwrap(Throwable error) {
+        Throwable current = error;
+        while ((current instanceof CompletionException || current instanceof ExecutionException) && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
+    }
+
+    private static String describeFailure(Throwable error) {
+        if (error == null) return "unknown failure";
+        String message = error.getMessage();
+        String type = error.getClass().getSimpleName();
+        return isBlank(message) ? type : type + ": " + message;
     }
 
     private static Task<SkinAssets> fetchFromMojang(UUID uuid) {
@@ -295,38 +369,72 @@ public final class MojangSkinCache {
     }
 
     private static Task<Unit> registerDynamic(UUID uuid, SkinAssets assets) {
-        return Task.delay(() -> {
-            registerDynamic(uuid, assets.skinBytes(), assets.model(), assets.capeBytes(), assets.elytraBytes());
-            return Unit.INSTANCE;
-        });
+        return Task.async(() -> registerDynamic(
+                uuid,
+                assets.skinBytes(),
+                assets.model(),
+                assets.capeBytes(),
+                assets.elytraBytes()
+        ).run());
     }
 
-    private static void registerDynamic(
+    private static CompletableFuturePath<Unit> registerDynamic(
             UUID uuid,
             byte[] skinBytes,
             String model,
             Maybe<byte[]> capeBytes,
             Maybe<byte[]> elytraBytes) {
-        if (uuid == null || skinBytes == null || skinBytes.length == 0) return;
-        if (LOADED.containsKey(uuid)) return;
+        if (uuid == null) {
+            return CompletableFuturePath.failed(new IllegalArgumentException("skin UUID is null"));
+        }
+        if (skinBytes == null || skinBytes.length == 0) {
+            return CompletableFuturePath.failed(new SkinLoadException(uuid, "empty skin data before texture registration"));
+        }
+        if (LOADED.containsKey(uuid)) {
+            return CompletableFuturePath.completed(Unit.INSTANCE);
+        }
+
+        CompletableFuture<Unit> result = new CompletableFuture<>();
         Minecraft mc = Minecraft.getInstance();
-        mc.execute(() -> {
-            if (LOADED.containsKey(uuid)) return;
-            registerSkinTexture(mc, uuid, skinBytes)
-                    .peek(rl -> {
-                        Maybe<ResourceLocation> cape = capeBytes
-                                .flatMap(bytes -> registerRawTexture(mc, "skins/mojang/" + uuid + "_cape", bytes));
-                        Maybe<ResourceLocation> elytra = elytraBytes
-                                .flatMap(bytes -> registerRawTexture(mc, "skins/mojang/" + uuid + "_elytra", bytes));
-                        LOADED.put(uuid, SurvivorPlayerSkin.fromMojang(rl, "slim".equalsIgnoreCase(model), cape, elytra));
-                    });
-        });
+        mc.execute(() -> completeFuture(result, registerOnRenderThread(
+                mc, uuid, skinBytes, model, capeBytes, elytraBytes
+        )));
+        return CompletableFuturePath.fromFuture(result);
     }
 
-    private static Maybe<ResourceLocation> registerSkinTexture(Minecraft mc, UUID uuid, byte[] skinBytes) {
-        return readNativeImage(skinBytes)
-                .map(MojangSkinCache::processLegacySkin)
-                .flatMap(img -> registerNativeImage(mc, "skins/mojang/" + uuid, img));
+    private static Either<Throwable, Unit> registerOnRenderThread(
+            Minecraft mc,
+            UUID uuid,
+            byte[] skinBytes,
+            String model,
+            Maybe<byte[]> capeBytes,
+            Maybe<byte[]> elytraBytes) {
+        if (LOADED.containsKey(uuid)) {
+            return Either.right(Unit.INSTANCE);
+        }
+        return registerSkinTexture(mc, uuid, skinBytes)
+                .flatMap(skin -> Attempts.either(() -> {
+                    Maybe<ResourceLocation> cape = capeBytes
+                            .flatMap(bytes -> registerRawTexture(mc, "skins/mojang/" + uuid + "_cape", bytes));
+                    Maybe<ResourceLocation> elytra = elytraBytes
+                            .flatMap(bytes -> registerRawTexture(mc, "skins/mojang/" + uuid + "_elytra", bytes));
+                    LOADED.put(uuid, SurvivorPlayerSkin.fromMojang(skin, "slim".equalsIgnoreCase(model), cape, elytra));
+                    return Unit.INSTANCE;
+                }));
+    }
+
+    private static void completeFuture(CompletableFuture<Unit> future, Either<Throwable, Unit> result) {
+        result.fold(
+                future::completeExceptionally,
+                future::complete
+        );
+    }
+
+    private static Either<Throwable, ResourceLocation> registerSkinTexture(Minecraft mc, UUID uuid, byte[] skinBytes) {
+        return Attempts.either(() -> NativeImage.read(new ByteArrayInputStream(skinBytes)))
+                .flatMap(image -> Maybe.ofNullable(processLegacySkin(image))
+                        .toEither(() -> new SkinLoadException(uuid, "unsupported skin dimensions")))
+                .flatMap(image -> registerNativeImageRequired(mc, "skins/mojang/" + uuid, image));
     }
 
     private static Maybe<ResourceLocation> registerRawTexture(Minecraft mc, String path, byte[] bytes) {
@@ -346,6 +454,15 @@ public final class MojangSkinCache {
             mc.getTextureManager().register(rl, tex);
             return rl;
         });
+    }
+
+    private static Either<Throwable, ResourceLocation> registerNativeImageRequired(Minecraft mc, String path, NativeImage img) {
+        DynamicTexture texture = new DynamicTexture(img);
+        ResourceLocation location = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, path);
+        return Attempts.either(() -> {
+            mc.getTextureManager().register(location, texture);
+            return location;
+        }).peekLeft(error -> texture.close());
     }
 
     private static NativeImage processLegacySkin(NativeImage img) {
@@ -422,6 +539,8 @@ public final class MojangSkinCache {
             String model,
             Maybe<byte[]> capeBytes,
             Maybe<byte[]> elytraBytes) {}
+
+    private record SkinFailure(int attempts, String reason) {}
 
     private static final class SkinLoadException extends RuntimeException {
         private SkinLoadException(UUID uuid, String message) {

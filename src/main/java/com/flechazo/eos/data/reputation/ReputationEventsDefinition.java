@@ -2,7 +2,7 @@ package com.flechazo.eos.data.reputation;
 
 import cc.sighs.oelib.data.api.DataDriven;
 import cc.sighs.oelib.data.api.DataValidator;
-import com.flechazo.eos.data.common.IntValueOrRange;
+import com.flechazo.eos.util.IntValueOrRange;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.resources.ResourceLocation;

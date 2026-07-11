@@ -1,0 +1,15 @@
+{
+  "quest_id": "echoes_of_survival:mechanic_torch_delivery",
+  "title": "echoes_of_survival.quest.mechanic_torch_delivery.title",
+  "description": "echoes_of_survival.quest.mechanic_torch_delivery.desc",
+  "type": "echoes_of_survival:submit_items",
+  "objectives": [
+    { "item": "minecraft:coal", "count": 8 }
+  ],
+  "rewards": {
+    "items": [
+      { "id": "minecraft:torch", "count": 32 }
+    ],
+    "reputation": 12
+  }
+}

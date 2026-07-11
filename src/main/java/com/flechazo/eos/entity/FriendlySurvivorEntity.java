@@ -98,6 +98,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     @Nullable
     private UUID interactingPlayerId;
     private InteractionLockMode interactionLockMode = InteractionLockMode.NONE;
+    private int tradesDuringCurrentSession;
 
     public FriendlySurvivorEntity(EntityType<? extends AbstractSurvivorEntity> type, Level level) {
         super(type, level);
@@ -137,7 +138,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         builder.define(SKIN_USERNAME, "");
         builder.define(RECRUIT_OWNER_UUID, "");
         builder.define(PATROL_MODE, 0);
-        builder.define(ATTACK_MODE, 0);
+        builder.define(ATTACK_MODE, AttackMode.NEUTRAL.ordinal());
         builder.define(GUARD_POS, Optional.empty());
     }
 
@@ -283,12 +284,10 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
 
         @Override public boolean canUse() {
             if (!canFightCurrentTarget()) return false;
-            if (getAttackMode() == AttackMode.PASSIVE) return false;
             this.active = selectGoal();
             return this.active != null;
         }
         @Override public boolean canContinueToUse() {
-            if (getAttackMode() == AttackMode.PASSIVE) return false;
             if (!canFightCurrentTarget()) return false;
             return this.active != null && this.active.canContinueToUse();
         }
@@ -626,6 +625,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         this.entityData.set(RECRUIT_OWNER_UUID, player.getUUID().toString());
         this.getNavigation().stop();
         this.setTarget(null);
+        emitBubbleEvent("interaction", "recruited");
         player.displayClientMessage(Component.translatable("message.echoes_of_survival.recruit.success", this.getDisplayName()), true);
         return true;
     }
@@ -640,6 +640,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         this.entityData.set(RECRUIT_OWNER_UUID, "");
         this.getNavigation().stop();
         this.setTarget(null);
+        emitBubbleEvent("interaction", "dismissed");
         player.displayClientMessage(Component.translatable("message.echoes_of_survival.recruit.dismissed", this.getDisplayName()), true);
         return true;
     }
@@ -692,8 +693,14 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
 
     @Override
     public void setTradingPlayer(@Nullable Player player) {
+        Player previous = this.getTradingPlayer();
         super.setTradingPlayer(player);
+        if (!this.level().isClientSide && previous != null && player == null) {
+            if (this.tradesDuringCurrentSession == 0) emitBubbleEvent("interaction", "trade_failed");
+            this.tradesDuringCurrentSession = 0;
+        }
         if (!this.level().isClientSide && player != null) {
+            this.tradesDuringCurrentSession = 0;
             this.offers = new MerchantOffers();
             this.offerReputationGains.clear();
             this.updateTrades();
@@ -860,6 +867,8 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     @Override
     public void notifyTrade(MerchantOffer offer) {
         super.notifyTrade(offer);
+        this.tradesDuringCurrentSession++;
+        emitBubbleEvent("interaction", "trade_success");
         if (this.getTradingPlayer() instanceof ServerPlayer player) {
             int rep = reputationGainForOffer(offer);
             if (rep != 0) {
@@ -991,6 +1000,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         }
         if (!this.level().isClientSide) {
             tickGuardCombatLeash();
+            tickFriendlyBubbleStatus();
         }
         if (this.level().isClientSide || this.interactingPlayerId == null) return;
 
@@ -1026,6 +1036,34 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         }
 
         freezeForMenu();
+    }
+
+    private void tickFriendlyBubbleStatus() {
+        if (this.tickCount % 200 != 0) return;
+        if (this.survivorFood.getFoodLevel() <= 6) emitBubbleEvent("environment", "hungry");
+        if (this.getHealth() <= this.getMaxHealth() * 0.35F && !hasHealingPotion()) emitBubbleEvent("status", "no_medicine");
+
+        ItemStack weapon = this.getMainHandItem();
+        if (weapon.getItem() instanceof com.atsuishio.superbwarfare.item.gun.GunItem) {
+            com.atsuishio.superbwarfare.data.gun.GunData gun = com.atsuishio.superbwarfare.data.gun.GunData.from(weapon);
+            if (gun.countBackupAmmo(this) <= 0 && !gun.hasEnoughAmmoToShoot(this)) emitBubbleEvent("status", "needs_ammo");
+        }
+        if (!weapon.isEmpty() && weapon.isDamageableItem() && weapon.getDamageValue() >= weapon.getMaxDamage() - 1) {
+            emitBubbleEvent("status", "weapon_broken");
+        }
+        for (ItemStack armor : this.getArmorSlots()) {
+            if (!armor.isEmpty() && armor.isDamageableItem() && armor.getDamageValue() >= armor.getMaxDamage() - 1) {
+                emitBubbleEvent("status", "armor_broken");
+                break;
+            }
+        }
+    }
+
+    private boolean hasHealingPotion() {
+        for (int i = 0; i < this.tacticalInventory.getSlots(); i++) {
+            if (EosDatapackIndex.matches(this.tacticalInventory.getStackInSlot(i))) return true;
+        }
+        return false;
     }
 
     private void freezeForMenu() {

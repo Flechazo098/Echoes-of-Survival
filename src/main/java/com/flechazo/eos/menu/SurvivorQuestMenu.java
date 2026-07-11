@@ -157,6 +157,7 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
         if (handled) {
             Entity entity = sp.level().getEntity(this.survivorEntityId);
             if (entity instanceof FriendlySurvivorEntity survivor) {
+                survivor.emitBubbleEvent("interaction", action == Action.ACCEPT ? "quest_accepted" : "quest_completed");
                 SurvivorQuestStatePayload.create(sp, survivor).sendTo(sp);
             }
         }

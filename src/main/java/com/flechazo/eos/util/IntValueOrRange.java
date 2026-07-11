@@ -1,4 +1,4 @@
-package com.flechazo.eos.data.common;
+package com.flechazo.eos.util;
 
 import com.mojang.datafixers.util.Either;
 import com.mojang.serialization.Codec;

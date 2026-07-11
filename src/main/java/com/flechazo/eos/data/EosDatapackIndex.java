@@ -4,6 +4,7 @@ import cc.sighs.oelib.data.DataManager;
 import cc.sighs.oelib.neoforge.event.DataReloadEvent;
 import com.flechazo.eos.EchoesofSurvival;
 import com.flechazo.eos.data.armor.ArmorSetDefinition;
+import com.flechazo.eos.data.bubble.SurvivorBubbleDefinition;
 import com.flechazo.eos.data.common.HealingPotionList;
 import com.flechazo.eos.data.quest.QuestDefinition;
 import com.flechazo.eos.data.quest.QuestPoolDefinition;
@@ -43,6 +44,7 @@ public final class EosDatapackIndex {
     private static volatile Map<ResourceLocation, List<SkinProfile>> skinProfilesByLibrary = Map.of();
     private static volatile Map<UUID, String> skinLibraryUsernamesByUuid = Map.of();
     private static volatile List<String> healingPotionPatterns = List.of();
+    private static volatile Map<String, SurvivorBubbleDefinition.BubbleEntry> survivorBubbles = Map.of();
 
     @SubscribeEvent
     public static void onDataReload(DataReloadEvent event) {
@@ -57,6 +59,7 @@ public final class EosDatapackIndex {
         if (type == ReputationEventsDefinition.class) rebuildReputationEvents();
         if (type == SkinLibraryDefinition.class) rebuildSkinLibrary();
         if (type == HealingPotionList.class) rebuildHealingPotions();
+        if (type == SurvivorBubbleDefinition.class) rebuildSurvivorBubbles();
     }
 
     private static void rebuildProfessions() {
@@ -167,6 +170,30 @@ public final class EosDatapackIndex {
 
     public static Maybe<ProfessionDefinition> profession(ResourceLocation id) {
         return Maybe.ofNullable(professionsById.get(id));
+    }
+
+    private static void rebuildSurvivorBubbles() {
+        Map<String, SurvivorBubbleDefinition.BubbleEntry> result = new HashMap<>();
+        for (SurvivorBubbleDefinition definition : DataManager.getDataList(SurvivorBubbleDefinition.class)) {
+            if (definition == null) continue;
+            String survivorType = definition.survivorType().serializedName();
+            putBubbleEvents(result, survivorType, "combat", definition.combat());
+            putBubbleEvents(result, survivorType, "environment", definition.environment());
+            putBubbleEvents(result, survivorType, "interaction", definition.interaction());
+            putBubbleEvents(result, survivorType, "status", definition.status());
+        }
+        survivorBubbles = Map.copyOf(result);
+    }
+
+    private static void putBubbleEvents(Map<String, SurvivorBubbleDefinition.BubbleEntry> target, String survivorType,
+                                        String category, Map<String, SurvivorBubbleDefinition.BubbleEntry> events) {
+        if (events == null) return;
+        events.forEach((event, entry) -> target.put(survivorType + "." + category + "." + event, entry));
+    }
+
+    public static Maybe<SurvivorBubbleDefinition.BubbleEntry> survivorBubble(
+            SurvivorBubbleDefinition.SurvivorType survivorType, String category, String event) {
+        return Maybe.ofNullable(survivorBubbles.get(survivorType.serializedName() + "." + category + "." + event));
     }
 
     public static Maybe<ProfessionDefinition> randomProfession() {
