@@ -55,6 +55,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.UUID;
 
 public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
@@ -817,6 +818,15 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     public boolean openTradeInterface(ServerPlayer player) {
         if (!this.isAlive() || this.isTrading() || this.isBaby()) return false;
 
+        ensureProfessionAssigned();
+        int reputation = ReputationApi.get(player);
+        OptionalInt minimumReputation = minimumTradeReputation();
+        if (!ReputationTiers.canTradeFriendly(reputation)
+                || minimumReputation.isPresent() && reputation < minimumReputation.getAsInt()) {
+            rejectTradeForReputation(player);
+            return false;
+        }
+
         this.getNavigation().stop();
         this.setTarget(null);
         if (this.isUsingItem()) {
@@ -829,10 +839,9 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         this.updateTrades();
 
         if (this.getOffers().isEmpty()) {
-            if (isTradeUnavailableDueToReputation(player)) {
-                player.displayClientMessage(Component.translatable("message.echoes_of_survival.trade.locked"), true);
-            }
+            boolean reputationLocked = isTradeUnavailableDueToReputation(player);
             this.setTradingPlayer(null);
+            if (reputationLocked) rejectTradeForReputation(player);
             return false;
         }
 
@@ -840,28 +849,37 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         return true;
     }
 
+    private void rejectTradeForReputation(ServerPlayer player) {
+        player.displayClientMessage(Component.translatable("message.echoes_of_survival.trade.locked"), true);
+        emitBubbleEvent("interaction", "trade_locked");
+    }
+
     private boolean isTradeUnavailableDueToReputation(ServerPlayer player) {
         int reputation = ReputationApi.get(player);
         if (!ReputationTiers.canTradeFriendly(reputation)) return true;
 
+        OptionalInt minimumReputation = minimumTradeReputation();
+        return minimumReputation.isPresent() && reputation < minimumReputation.getAsInt();
+    }
+
+    private OptionalInt minimumTradeReputation() {
         Maybe<ResourceLocation> professionId = getProfessionId();
-        if (professionId.isEmpty()) return false;
+        if (professionId.isEmpty()) return OptionalInt.empty();
 
         var profession = EosDatapackIndex.profession(professionId.get());
-        if (profession.isEmpty()) return false;
+        if (profession.isEmpty()) return OptionalInt.empty();
 
-        boolean hasLockedTrade = false;
+        int minimum = Integer.MAX_VALUE;
         List<TradePoolDefinition> pools = EosDatapackIndex.tradePools(professionId.get(), profession.get().logic().tradePools());
         for (TradePoolDefinition pool : pools) {
             if (pool == null || pool.trades() == null) continue;
             for (TradePoolDefinition.Trade trade : pool.trades()) {
                 if (trade == null || trade.buy() == null || trade.sell() == null) continue;
                 if (trade.buy().isEmpty() || trade.sell().isEmpty()) continue;
-                if (isTradeUnlocked(trade, reputation)) return false;
-                hasLockedTrade = true;
+                minimum = Math.min(minimum, tradeRequiredReputation(trade));
             }
         }
-        return hasLockedTrade;
+        return minimum == Integer.MAX_VALUE ? OptionalInt.empty() : OptionalInt.of(minimum);
     }
 
     @Override
@@ -908,6 +926,10 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     }
 
     private static boolean isTradeUnlocked(TradePoolDefinition.Trade trade, int reputation) {
+        return reputation >= tradeRequiredReputation(trade);
+    }
+
+    private static int tradeRequiredReputation(TradePoolDefinition.Trade trade) {
         int required = trade.reputationRequirement();
         if (trade.unlockRequirement().isDefined()) {
             required = Math.max(required, trade.unlockRequirement().get().map(
@@ -917,7 +939,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
                             .orElse(0)
             ));
         }
-        return reputation >= required;
+        return required;
     }
 
     private void ensureProfessionAssigned() {
@@ -967,6 +989,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
             double d3 = Math.sqrt(dx * dx + dz * dz);
             arrow.shoot(dx, dy + d3 * 0.2F, dz, 1.6F, (float) (14 - this.level().getDifficulty().getId() * 4));
             this.level().addFreshEntity(arrow);
+            bow.hurtAndBreak(1, this, LivingEntity.getSlotForHand(bowHand));
             return;
         }
 
@@ -981,6 +1004,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
             double d3 = Math.sqrt(dx * dx + dz * dz);
             arrow.shoot(dx, dy + d3 * 0.2F, dz, 1.6F, (float) (14 - this.level().getDifficulty().getId() * 4));
             this.level().addFreshEntity(arrow);
+            trident.hurtAndBreak(1, this, LivingEntity.getSlotForHand(tridentHand));
         }
     }
 
@@ -1048,13 +1072,16 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
             com.atsuishio.superbwarfare.data.gun.GunData gun = com.atsuishio.superbwarfare.data.gun.GunData.from(weapon);
             if (gun.countBackupAmmo(this) <= 0 && !gun.hasEnoughAmmoToShoot(this)) emitBubbleEvent("status", "needs_ammo");
         }
-        if (!weapon.isEmpty() && weapon.isDamageableItem() && weapon.getDamageValue() >= weapon.getMaxDamage() - 1) {
-            emitBubbleEvent("status", "weapon_broken");
-        }
-        for (ItemStack armor : this.getArmorSlots()) {
-            if (!armor.isEmpty() && armor.isDamageableItem() && armor.getDamageValue() >= armor.getMaxDamage() - 1) {
-                emitBubbleEvent("status", "armor_broken");
-                break;
+    }
+
+    @Override
+    public void onEquippedItemBroken(Item item, EquipmentSlot slot) {
+        super.onEquippedItemBroken(item, slot);
+        if (this.level().isClientSide) return;
+        switch (slot) {
+            case MAINHAND, OFFHAND -> emitBubbleEvent("status", "weapon_broken");
+            case HEAD, CHEST, LEGS, FEET -> emitBubbleEvent("status", "armor_broken");
+            default -> {
             }
         }
     }

@@ -9,6 +9,7 @@ import com.flechazo.hkt.business.util.OptionalOps;
 import com.mojang.datafixers.util.Either;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 
@@ -53,12 +54,14 @@ public record QuestDefinition(
     public record Objective(
             Optional<ResourceLocation> item,
             Optional<ResourceLocation> entity,
+            Optional<CompoundTag> entityNbt,
             int count
     ) {
         public static final Codec<Objective> CODEC = RecordCodecBuilder.create(
                 (RecordCodecBuilder.Instance<Objective> instance) -> instance.group(
                         ResourceLocation.CODEC.optionalFieldOf("item").forGetter(Objective::item),
                         ResourceLocation.CODEC.optionalFieldOf("entity").forGetter(Objective::entity),
+                        CompoundTag.CODEC.optionalFieldOf("entity_nbt").forGetter(Objective::entityNbt),
                         Codec.INT.optionalFieldOf("count", 1).forGetter(Objective::count)
                 ).apply(instance, Objective::new)
         );
@@ -104,6 +107,9 @@ public record QuestDefinition(
                 boolean hasEntity = obj.entityTarget().isDefined();
                 if (hasItem == hasEntity) {
                     return ValidationResult.failure("objective must have exactly one of 'item' or 'entity'");
+                }
+                if (obj.entityNbt().isPresent() && !hasEntity) {
+                    return ValidationResult.failure("objective 'entity_nbt' requires 'entity'");
                 }
                 if (obj.count() <= 0) {
                     return ValidationResult.failure("objective 'count' must be > 0");

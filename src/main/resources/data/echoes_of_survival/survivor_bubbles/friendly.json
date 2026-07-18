@@ -157,6 +157,15 @@
         "bubble.echoes_of_survival.friendly.interaction.trade_failed.2"
       ],
       "duration": 200
+    },
+    "trade_locked": {
+      "chance": 1.0,
+      "cooldown": 100,
+      "keys": [
+        "bubble.echoes_of_survival.friendly.interaction.trade_locked.1",
+        "bubble.echoes_of_survival.friendly.interaction.trade_locked.2"
+      ],
+      "duration": 200
     }
   },
   "status": {

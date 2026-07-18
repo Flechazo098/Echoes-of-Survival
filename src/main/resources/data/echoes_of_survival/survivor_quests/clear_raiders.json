@@ -7,6 +7,11 @@
   "objectives": [
     {
       "entity": "echoes_of_survival:hostile_survivor",
+      "entity_nbt": {
+        "EosSkinUuid": "069a79f4-44e9-4726-a5be-fca90e38aaf5",
+        "EosSkinUsername": "Notch",
+        "EosProfessionId": "echoes_of_survival:scavenger"
+      },
       "count": 5
     }
   ],

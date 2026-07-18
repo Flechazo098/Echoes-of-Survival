@@ -15,12 +15,15 @@ import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
 import net.minecraft.world.entity.monster.CrossbowAttackMob;
@@ -197,8 +200,57 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
         boolean r = super.doHurtTarget(t);
         if (r) {
             markCombat();
+            this.getMainHandItem().hurtAndBreak(1, this, EquipmentSlot.MAINHAND);
         }
         return r;
+    }
+
+    @Override
+    protected void hurtArmor(DamageSource damageSource, float damageAmount) {
+        this.doHurtEquipment(
+                damageSource,
+                damageAmount,
+                EquipmentSlot.FEET,
+                EquipmentSlot.LEGS,
+                EquipmentSlot.CHEST,
+                EquipmentSlot.HEAD
+        );
+    }
+
+    @Override
+    protected void hurtHelmet(DamageSource damageSource, float damageAmount) {
+        this.doHurtEquipment(damageSource, damageAmount, EquipmentSlot.HEAD);
+    }
+
+    @Override
+    protected void hurtCurrentlyUsedShield(float damageAmount) {
+        ItemStack shield = this.getUseItem();
+        if (!shield.canPerformAction(ItemAbilities.SHIELD_BLOCK) || damageAmount < 3.0F) return;
+
+        InteractionHand hand = this.getUsedItemHand();
+        EquipmentSlot slot = LivingEntity.getSlotForHand(hand);
+        shield.hurtAndBreak(1 + Mth.floor(damageAmount), this, slot);
+        if (shield.isEmpty()) {
+            this.setItemSlot(slot, ItemStack.EMPTY);
+            this.stopUsingItem();
+            this.playSound(SoundEvents.SHIELD_BREAK, 0.8F, 0.8F + this.random.nextFloat() * 0.4F);
+        }
+    }
+
+    @Override
+    protected void dropCustomDeathLoot(ServerLevel level, DamageSource damageSource, boolean recentlyHit) {
+        super.dropCustomDeathLoot(level, damageSource, recentlyHit);
+        for (int slot = 0; slot < this.tacticalInventory.getSlots(); slot++) {
+            ItemStack stack = this.tacticalInventory.getStackInSlot(slot);
+            if (stack.isEmpty()) continue;
+            this.spawnAtLocation(stack.copy());
+            this.tacticalInventory.setStackInSlot(slot, ItemStack.EMPTY);
+        }
+    }
+
+    @Override
+    protected float getEquipmentDropChance(EquipmentSlot slot) {
+        return this.getItemBySlot(slot).isEmpty() ? 0.0F : 2.0F;
     }
 
     @Override
@@ -281,17 +333,17 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
         var bowHand = ProjectileUtil.getWeaponHoldingHand(this, i -> i instanceof BowItem);
         ItemStack bow = this.getItemInHand(bowHand);
         if (bow.getItem() instanceof BowItem) {
-            fireArrow(target, distFactor, bow);
+            fireArrow(target, distFactor, bow, bowHand);
             return;
         }
         var tridentHand = ProjectileUtil.getWeaponHoldingHand(this, i -> i instanceof TridentItem);
         ItemStack trident = this.getItemInHand(tridentHand);
         if (trident.getItem() instanceof TridentItem) {
-            fireArrow(target, distFactor, trident);
+            fireArrow(target, distFactor, trident, tridentHand);
         }
     }
 
-    private void fireArrow(LivingEntity target, float distFactor, ItemStack weapon) {
+    private void fireArrow(LivingEntity target, float distFactor, ItemStack weapon, InteractionHand hand) {
         var proj = new ItemStack(Items.ARROW);
         AbstractArrow arrow = ProjectileUtil.getMobArrow(this, proj, distFactor, weapon);
         double dx = target.getX() - this.getX();
@@ -300,6 +352,7 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
         double d3 = Math.sqrt(dx * dx + dz * dz);
         arrow.shoot(dx, dy + d3 * 0.2F, dz, 1.6F, (float) (14 - this.level().getDifficulty().getId() * 4));
         this.level().addFreshEntity(arrow);
+        weapon.hurtAndBreak(1, this, LivingEntity.getSlotForHand(hand));
     }
 
     @Override

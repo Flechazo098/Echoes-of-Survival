@@ -144,6 +144,8 @@
   "bubble.echoes_of_survival.friendly.interaction.trade_success.2": "合作愉快。",
   "bubble.echoes_of_survival.friendly.interaction.trade_failed.1": "没有合适的东西吗？",
   "bubble.echoes_of_survival.friendly.interaction.trade_failed.2": "下次再来看看吧。",
+  "bubble.echoes_of_survival.friendly.interaction.trade_locked.1": "你的声望还不够。",
+  "bubble.echoes_of_survival.friendly.interaction.trade_locked.2": "等我更信任你一些，再来谈生意。",
   "bubble.echoes_of_survival.friendly.status.no_medicine.1": "我没药了！",
   "bubble.echoes_of_survival.friendly.status.no_medicine.2": "需要治疗物资！",
   "bubble.echoes_of_survival.friendly.status.needs_ammo.1": "弹药耗尽！",

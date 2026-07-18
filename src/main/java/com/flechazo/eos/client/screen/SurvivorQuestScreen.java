@@ -14,6 +14,7 @@ import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -56,9 +57,10 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
     private static final int DETAIL_CONTENT_HEIGHT = DETAIL_CONTENT_BOTTOM - DETAIL_CONTENT_TOP;
     private static final int OBJECTIVE_ICON_SIZE = 16;
     private static final float OBJECTIVE_ITEM_SCALE = 0.875F;
-    private static final int OBJECTIVE_ENTITY_SCALE = 7;
+    private static final int OBJECTIVE_ENTITY_SCALE = 10;
     private static final int OBJECTIVE_ENTITY_CLIP_PADDING = 2;
     private static final int OBJECTIVE_TEXT_INDENT = scaled(8) + OBJECTIVE_ICON_SIZE + 4;
+    private static final int OBJECTIVE_LIST_TOP_GAP = 18;
     private static final int DETAIL_SCROLL_STEP = 12;
     private static final int TEXT = 0xFF101010;
     private static final int MUTED = 0xFF303030;
@@ -73,8 +75,8 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
 
     private final List<TexturedButton> questButtons = new ArrayList<>();
     private final List<HoverTarget> hoverTargets = new ArrayList<>();
-    private final Map<ResourceLocation, LivingEntity> objectiveEntities = new HashMap<>();
-    private final Set<ResourceLocation> unavailableObjectiveEntities = new HashSet<>();
+    private final Map<QuestDefinition.Objective, LivingEntity> objectiveEntities = new HashMap<>();
+    private final Set<QuestDefinition.Objective> unavailableObjectiveEntities = new HashSet<>();
     private final Inventory playerInventory;
     private final long textSeed;
     private TexturedButton actionButton;
@@ -316,7 +318,7 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
         y += 6;
 
         graphics.drawString(this.font, Component.translatable("gui.echoes_of_survival.quest.objectives"), x, y, TEXT, false);
-        y += 12;
+        y += OBJECTIVE_LIST_TOP_GAP;
         for (int i = 0; i < quest.objectives().size(); i++) {
             QuestDefinition.Objective objective = quest.objectives().get(i);
             int progress = i < entry.objectiveProgress().size() ? entry.objectiveProgress().get(i) : 0;
@@ -371,7 +373,7 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
         int height = 0;
         height += this.font.split(randomizedText(quest.description(), quest.questId(), "description"), DETAIL_WIDTH).size() * 10;
         height += 6;
-        height += 12;
+        height += OBJECTIVE_LIST_TOP_GAP;
         for (int i = 0; i < quest.objectives().size(); i++) {
             QuestDefinition.Objective objective = quest.objectives().get(i);
             int progress = i < entry.objectiveProgress().size() ? entry.objectiveProgress().get(i) : 0;
@@ -442,7 +444,7 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
         if (objective.entityTarget().isEmpty()) return;
 
         ResourceLocation entityId = objective.entityTarget().get();
-        LivingEntity entity = objectiveEntity(entityId);
+        LivingEntity entity = objectiveEntity(objective);
         if (entity == null) return;
 
         graphics.pose().pushPose();
@@ -462,18 +464,26 @@ public class SurvivorQuestScreen extends AbstractContainerScreen<SurvivorQuestMe
                 Component.translatable(entity.getType().getDescriptionId()), true);
     }
 
-    private LivingEntity objectiveEntity(ResourceLocation id) {
-        LivingEntity cached = this.objectiveEntities.get(id);
+    private LivingEntity objectiveEntity(QuestDefinition.Objective objective) {
+        LivingEntity cached = this.objectiveEntities.get(objective);
         if (cached != null) return cached;
-        if (this.unavailableObjectiveEntities.contains(id) || this.minecraft == null || this.minecraft.level == null) return null;
+        if (this.unavailableObjectiveEntities.contains(objective)
+                || objective.entityTarget().isEmpty()
+                || this.minecraft == null || this.minecraft.level == null) return null;
 
+        ResourceLocation id = objective.entityTarget().get();
         Optional<EntityType<?>> type = BuiltInRegistries.ENTITY_TYPE.getOptional(id);
         Entity entity = type.map(value -> value.create(this.minecraft.level)).orElse(null);
         if (entity instanceof LivingEntity living) {
-            this.objectiveEntities.put(id, living);
+            objective.entityNbt().ifPresent(configuredNbt -> {
+                CompoundTag completeNbt = living.saveWithoutId(new CompoundTag());
+                completeNbt.merge(configuredNbt.copy());
+                living.load(completeNbt);
+            });
+            this.objectiveEntities.put(objective, living);
             return living;
         }
-        this.unavailableObjectiveEntities.add(id);
+        this.unavailableObjectiveEntities.add(objective);
         return null;
     }
 

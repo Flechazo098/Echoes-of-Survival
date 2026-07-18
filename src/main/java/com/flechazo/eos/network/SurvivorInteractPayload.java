@@ -39,7 +39,9 @@ public record SurvivorInteractPayload(int entityId, int action) implements INetw
 
             if (this.action == ACTION_TRADE) {
                 survivor.endMenuInteraction(player);
-                survivor.openTradeInterface(player);
+                if (!survivor.openTradeInterface(player)) {
+                    new SurvivorScreenOpenFailedPayload(this.entityId).sendTo(player);
+                }
             } else if (this.action == ACTION_QUEST) {
                 SurvivorQuestMenu.open(player, survivor);
             } else if (this.action == ACTION_RECRUIT) {

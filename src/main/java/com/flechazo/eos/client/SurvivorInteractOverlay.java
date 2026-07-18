@@ -78,6 +78,13 @@ public final class SurvivorInteractOverlay {
         return entityId >= 0;
     }
 
+    public static void restoreMouseAfterFailedScreenOpen(Minecraft minecraft) {
+        pendingSelection = false;
+        if (minecraft != null && minecraft.screen == null && !isActive()) {
+            minecraft.mouseHandler.grabMouse();
+        }
+    }
+
     public static void tick(Minecraft minecraft) {
         if (!isActive()) return;
         if (minecraft.player == null || minecraft.level == null || minecraft.screen != null) {
