@@ -147,6 +147,8 @@ dependencies {
     implementation "curse.maven:curios-309927:6529130"
     implementation "curse.maven:geckolib-388172:8350073"
     implementation "curse.maven:kotlin-for-forge-351264:8335665"
+    implementation "curse.maven:mod-tabs-1313300:8408271"
+    implementation "curse.maven:midnightlib-488090:8028802"
 //    compileOnly "mezz.jei:jei-$rootProject.minecraft_version-neoforge-api:$rootProject.jei_version"
 //    runtimeOnly ("mezz.jei:jei-$rootProject.minecraft_version-neoforge:$rootProject.jei_version") { transitive = false }
 //    implementation 'com.sighs:ApricityUI-neoforge-1.21.1:1.1.2'

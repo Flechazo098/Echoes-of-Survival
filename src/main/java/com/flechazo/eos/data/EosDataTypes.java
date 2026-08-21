@@ -7,6 +7,7 @@ import com.flechazo.eos.data.bubble.SurvivorBubbleDefinition;
 import com.flechazo.eos.data.common.HealingPotionList;
 import com.flechazo.eos.data.quest.QuestDefinition;
 import com.flechazo.eos.data.quest.QuestPoolDefinition;
+import com.flechazo.eos.data.quest.QuestScreenLayoutDefinition;
 import com.flechazo.eos.data.reputation.ReputationEventsDefinition;
 import com.flechazo.eos.data.reputation.ReputationTiersDefinition;
 import com.flechazo.eos.data.skin.SkinLibraryDefinition;
@@ -25,6 +26,7 @@ public final class EosDataTypes {
         DataRegistry.registerWithNamespaces(TradePoolDefinition.class, TradePoolDefinition.CODEC, namespaces);
         DataRegistry.registerWithNamespaces(QuestDefinition.class, QuestDefinition.CODEC, namespaces);
         DataRegistry.registerWithNamespaces(QuestPoolDefinition.class, QuestPoolDefinition.CODEC, namespaces);
+        DataRegistry.registerWithNamespaces(QuestScreenLayoutDefinition.class, QuestScreenLayoutDefinition.CODEC, namespaces);
         DataRegistry.registerWithNamespaces(ReputationTiersDefinition.class, ReputationTiersDefinition.CODEC, namespaces);
         DataRegistry.registerWithNamespaces(ReputationEventsDefinition.class, ReputationEventsDefinition.CODEC, namespaces);
         DataRegistry.registerWithNamespaces(ArmorSetDefinition.class, ArmorSetDefinition.CODEC, namespaces);

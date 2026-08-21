@@ -8,6 +8,7 @@ import com.flechazo.eos.data.bubble.SurvivorBubbleDefinition;
 import com.flechazo.eos.data.common.HealingPotionList;
 import com.flechazo.eos.data.quest.QuestDefinition;
 import com.flechazo.eos.data.quest.QuestPoolDefinition;
+import com.flechazo.eos.data.quest.QuestScreenLayoutDefinition;
 import com.flechazo.eos.data.reputation.ReputationEventsDefinition;
 import com.flechazo.eos.data.reputation.ReputationTiersDefinition;
 import com.flechazo.eos.data.skin.SkinLibraryDefinition;
@@ -36,6 +37,7 @@ public final class EosDatapackIndex {
     private static volatile Map<ResourceLocation, List<TradePoolDefinition>> tradePoolsByProfession = Map.of();
     private static volatile Map<ResourceLocation, QuestDefinition> questsById = Map.of();
     private static volatile Map<ResourceLocation, QuestPoolDefinition> questPoolsByFileId = Map.of();
+    private static volatile Map<ResourceLocation, QuestScreenLayoutDefinition> questLayoutsByQuestId = Map.of();
     private static volatile Map<ResourceLocation, ArmorSetDefinition> armorSetsByFileId = Map.of();
     private static volatile Map<String, ReputationTiersDefinition.Tier> reputationTierByName = Map.of();
     private static volatile List<Map.Entry<String, ReputationTiersDefinition.Tier>> reputationTiers = List.of();
@@ -54,6 +56,7 @@ public final class EosDatapackIndex {
         if (type == TradePoolDefinition.class) rebuildTradePools();
         if (type == QuestDefinition.class) rebuildQuests();
         if (type == QuestPoolDefinition.class) rebuildQuestPools();
+        if (type == QuestScreenLayoutDefinition.class) rebuildQuestLayouts();
         if (type == ArmorSetDefinition.class) rebuildArmorSets();
         if (type == ReputationTiersDefinition.class) rebuildReputationTiers();
         if (type == ReputationEventsDefinition.class) rebuildReputationEvents();
@@ -97,6 +100,16 @@ public final class EosDatapackIndex {
 
     private static void rebuildQuestPools() {
         questPoolsByFileId = Map.copyOf(DataManager.getAllData(QuestPoolDefinition.class));
+    }
+
+    private static void rebuildQuestLayouts() {
+        Map<ResourceLocation, QuestScreenLayoutDefinition> map = new HashMap<>();
+        for (QuestScreenLayoutDefinition layout : DataManager.getDataList(QuestScreenLayoutDefinition.class)) {
+            if (layout != null && layout.questId() != null) {
+                map.put(layout.questId(), layout);
+            }
+        }
+        questLayoutsByQuestId = Map.copyOf(map);
     }
 
     private static void rebuildArmorSets() {
@@ -235,6 +248,10 @@ public final class EosDatapackIndex {
 
     public static Maybe<QuestPoolDefinition> questPool(ResourceLocation id) {
         return Maybe.ofNullable(questPoolsByFileId.get(id));
+    }
+
+    public static Maybe<QuestScreenLayoutDefinition> questScreenLayout(ResourceLocation questId) {
+        return Maybe.ofNullable(questLayoutsByQuestId.get(questId));
     }
 
     public static Maybe<ArmorSetDefinition> armorSet(ResourceLocation id) {

@@ -4,6 +4,7 @@ import com.atsuishio.superbwarfare.client.PoseTool;
 import com.atsuishio.superbwarfare.item.gun.GunItem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.flechazo.eos.entity.AbstractSurvivorEntity;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.HumanoidArmorModel;
 import net.minecraft.client.model.PlayerModel;
 import net.minecraft.client.model.geom.ModelLayers;
@@ -77,7 +78,10 @@ public abstract class SurvivorPlayerRenderer<T extends AbstractSurvivorEntity> e
 
     @Override
     protected boolean shouldShowName(T entity) {
-        return entity.getProfessionId().isDefined() || super.shouldShowName(entity);
+        var player = Minecraft.getInstance().player;
+        return player != null
+                && !entity.isInvisibleTo(player)
+                && (entity.getProfessionId().isDefined() || super.shouldShowName(entity));
     }
 
     protected abstract SurvivorPlayerSkin skin(T entity);

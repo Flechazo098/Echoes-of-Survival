@@ -5,6 +5,8 @@ import com.flechazo.eos.client.render.FriendlySurvivorRenderer;
 import com.flechazo.eos.client.render.HostileSurvivorRenderer;
 import com.flechazo.eos.client.render.NeutralSurvivorRenderer;
 import com.flechazo.eos.client.screen.SurvivorPersonalScreen;
+import com.flechazo.eos.client.screen.PlayerQuestJournalScreen;
+import com.flechazo.eos.client.screen.QuestJournalTab;
 import com.flechazo.eos.client.screen.SurvivorQuestScreen;
 import com.flechazo.eos.entity.FriendlySurvivorEntity;
 import com.flechazo.eos.entity.EosEntityTypes;
@@ -13,7 +15,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
@@ -21,16 +25,23 @@ import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
+import vodmordia.modtabs.api.tabs_menu.TabsMenu;
 
 @EventBusSubscriber(modid = EchoesofSurvival.MODID, value = Dist.CLIENT)
 public final class EosClientEvents {
     private EosClientEvents() {
     }
 
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onClientSetup(FMLClientSetupEvent event) {
+        TabsMenu.register(new QuestJournalTab());
+    }
+
     @SubscribeEvent
     public static void onRegisterScreens(RegisterMenuScreensEvent event) {
         event.register(EosMenus.SURVIVOR_QUEST.get(), SurvivorQuestScreen::new);
         event.register(EosMenus.SURVIVOR_PERSONAL.get(), SurvivorPersonalScreen::new);
+        event.register(EosMenus.PLAYER_QUEST_JOURNAL.get(), PlayerQuestJournalScreen::new);
     }
 
     @SubscribeEvent

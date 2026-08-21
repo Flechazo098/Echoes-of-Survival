@@ -15,6 +15,7 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
 import javax.annotation.Nullable;
 
@@ -27,6 +28,7 @@ public final class EosGameEvents {
         NeoForge.EVENT_BUS.addListener(EosGameEvents::onLivingDeath);
         NeoForge.EVENT_BUS.addListener(EosGameEvents::onPlayerLogin);
         NeoForge.EVENT_BUS.addListener(EosGameEvents::onLivingIncomingDamage);
+        NeoForge.EVENT_BUS.addListener(EosGameEvents::onPlayerTick);
     }
 
     private static void onRegisterCommands(RegisterCommandsEvent event) {
@@ -46,6 +48,12 @@ public final class EosGameEvents {
     private static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             player.syncData(EosAttachments.PLAYER_REPUTATION.get());
+        }
+    }
+
+    private static void onPlayerTick(PlayerTickEvent.Post event) {
+        if (event.getEntity() instanceof ServerPlayer player && player.tickCount % 20 == 0) {
+            QuestApi.updateWorldObjectives(player);
         }
     }
 

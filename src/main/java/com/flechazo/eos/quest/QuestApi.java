@@ -5,6 +5,9 @@ import com.flechazo.eos.data.quest.QuestDefinition;
 import com.flechazo.eos.data.reputation.ReputationTiersDefinition;
 import com.flechazo.eos.reputation.EosAttachments;
 import com.flechazo.eos.reputation.ReputationApi;
+import net.minecraft.advancements.critereon.LocationPredicate;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -12,6 +15,8 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.*;
 
@@ -55,6 +60,7 @@ public final class QuestApi {
         List<Integer> progress = new ArrayList<>(Collections.nCopies(def.objectives().size(), 0));
         next.put(questId, new PlayerQuestState.QuestProgress(questId, List.copyOf(progress), false, false));
         setState(player, new PlayerQuestState(next, state.completions()));
+        updateWorldObjectives(player);
         return true;
     }
 
@@ -83,9 +89,7 @@ public final class QuestApi {
 
         if (def.repeatable()) {
             next.remove(questId);
-            if (def.maxRepeats() > 0) {
-                nextCompletions.merge(questId, 1, Integer::sum);
-            }
+            nextCompletions.merge(questId, 1, Integer::sum);
         } else {
             next.put(questId, new PlayerQuestState.QuestProgress(
                     progress.questId(),
@@ -154,6 +158,84 @@ public final class QuestApi {
         if (changed) {
             setState(player, new PlayerQuestState(next, state.completions()));
         }
+    }
+
+    public static void updateWorldObjectives(ServerPlayer player) {
+        if (player == null) return;
+
+        PlayerQuestState state = getState(player);
+        if (state.active().isEmpty()) return;
+
+        boolean changed = false;
+        Map<ResourceLocation, PlayerQuestState.QuestProgress> next = new HashMap<>(state.active());
+
+        for (Map.Entry<ResourceLocation, PlayerQuestState.QuestProgress> entry : state.active().entrySet()) {
+            ResourceLocation questId = entry.getKey();
+            PlayerQuestState.QuestProgress progress = entry.getValue();
+            if (progress == null || progress.completed()) continue;
+
+            var definition = EosDatapackIndex.quest(questId);
+            if (definition.isEmpty()) continue;
+            QuestDefinition quest = definition.get();
+            boolean reachesPosition = quest.type().equals(QuestDefinition.TYPE_REACH_POSITION);
+            boolean exploresStructure = quest.type().equals(QuestDefinition.TYPE_EXPLORE_STRUCTURE);
+            if (!reachesPosition && !exploresStructure) continue;
+
+            List<Integer> objectiveProgress = normalizedProgress(progress, quest);
+            boolean progressChanged = false;
+            for (int i = 0; i < quest.objectives().size(); i++) {
+                QuestDefinition.Objective objective = quest.objectives().get(i);
+                if (objective == null || objectiveProgress.get(i) >= objective.count()) continue;
+
+                boolean reached = reachesPosition
+                        ? objective.positionTarget().map(target -> isAtPosition(player, target)).orElse(false)
+                        : objective.structureTarget().map(target -> isInsideStructure(player, target)).orElse(false);
+                if (!reached) continue;
+
+                objectiveProgress.set(i, objective.count());
+                progressChanged = true;
+            }
+
+            if (!progressChanged) continue;
+            next.put(questId, new PlayerQuestState.QuestProgress(
+                    questId,
+                    List.copyOf(objectiveProgress),
+                    isCompleted(quest, objectiveProgress),
+                    progress.claimed()
+            ));
+            changed = true;
+        }
+
+        if (changed) {
+            setState(player, new PlayerQuestState(next, state.completions()));
+        }
+    }
+
+    private static boolean isAtPosition(ServerPlayer player, QuestDefinition.PositionTarget target) {
+        if (!player.level().dimension().location().equals(target.dimension())) return false;
+        Vec3 center = new Vec3(target.x() + 0.5D, target.y() + 0.5D, target.z() + 0.5D);
+        return player.position().distanceToSqr(center) <= target.radius() * target.radius();
+    }
+
+    private static boolean isInsideStructure(ServerPlayer player, ResourceLocation structureId) {
+        Registry<Structure> structures = player.registryAccess().registryOrThrow(Registries.STRUCTURE);
+        return structures.getHolder(structureId)
+                .map(structure -> LocationPredicate.Builder.inStructure(structure)
+                        .build()
+                        .matches(player.serverLevel(), player.getX(), player.getY(), player.getZ()))
+                .orElse(false);
+    }
+
+    private static List<Integer> normalizedProgress(
+            PlayerQuestState.QuestProgress progress,
+            QuestDefinition definition
+    ) {
+        List<Integer> result = new ArrayList<>(Collections.nCopies(definition.objectives().size(), 0));
+        int copyCount = Math.min(result.size(), progress.objectiveProgress().size());
+        for (int i = 0; i < copyCount; i++) {
+            result.set(i, Math.max(0, progress.objectiveProgress().get(i)));
+        }
+        return result;
     }
 
     public static boolean submitItems(ServerPlayer player, ResourceLocation questId) {

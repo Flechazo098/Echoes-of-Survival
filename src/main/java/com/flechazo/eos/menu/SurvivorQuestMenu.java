@@ -17,6 +17,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
@@ -37,42 +38,38 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
     private static final int CLAIM_OFFSET = 2000;
 
     public SurvivorQuestMenu(int containerId, Inventory inventory, RegistryFriendlyByteBuf buf) {
-        super(EosMenus.SURVIVOR_QUEST.get(), containerId);
-        this.survivorEntityId = buf.readVarInt();
-        this.playerReputation = buf.readVarInt();
-        int size = buf.readVarInt();
-        List<ResourceLocation> ids = new ArrayList<>();
-        for (int i = 0; i < size; i++) {
-            ids.add(buf.readResourceLocation());
-        }
-        this.questIds = new ArrayList<>(ids);
-        List<QuestEntry> entries = new ArrayList<>();
-        for (int i = 0; i < size; i++) {
-            ResourceLocation questId = buf.readResourceLocation();
-            int progressSize = buf.readVarInt();
-            List<Integer> objectiveProgress = new ArrayList<>();
-            for (int j = 0; j < progressSize; j++) {
-                objectiveProgress.add(buf.readVarInt());
-            }
-            boolean completed = buf.readBoolean();
-            boolean claimed = buf.readBoolean();
-            boolean maxReached = buf.readBoolean();
-            entries.add(new QuestEntry(questId, List.copyOf(objectiveProgress), completed, claimed, maxReached));
-        }
-        this.questEntries = new ArrayList<>(entries);
+        this(EosMenus.SURVIVOR_QUEST.get(), containerId, readMenuState(buf));
     }
 
     public SurvivorQuestMenu(int containerId, Inventory inventory, FriendlySurvivorEntity survivor, List<ResourceLocation> questIds) {
-        super(EosMenus.SURVIVOR_QUEST.get(), containerId);
-        this.survivorEntityId = survivor.getId();
-        this.questIds = new ArrayList<>(questIds);
-        this.questEntries = new ArrayList<>();
-        this.playerReputation = 0;
+        this(EosMenus.SURVIVOR_QUEST.get(), containerId, survivor.getId(), questIds, List.of(), 0);
     }
 
     private SurvivorQuestMenu(int containerId, Inventory inventory, FriendlySurvivorEntity survivor, List<ResourceLocation> questIds, List<QuestEntry> questEntries, int playerReputation) {
-        super(EosMenus.SURVIVOR_QUEST.get(), containerId);
-        this.survivorEntityId = survivor.getId();
+        this(EosMenus.SURVIVOR_QUEST.get(), containerId, survivor.getId(), questIds, questEntries, playerReputation);
+    }
+
+    protected SurvivorQuestMenu(MenuType<?> menuType, int containerId, MenuState state) {
+        this(
+                menuType,
+                containerId,
+                state.survivorEntityId(),
+                state.questIds(),
+                state.questEntries(),
+                state.playerReputation()
+        );
+    }
+
+    protected SurvivorQuestMenu(
+            MenuType<?> menuType,
+            int containerId,
+            int survivorEntityId,
+            List<ResourceLocation> questIds,
+            List<QuestEntry> questEntries,
+            int playerReputation
+    ) {
+        super(menuType, containerId);
+        this.survivorEntityId = survivorEntityId;
         this.questIds = new ArrayList<>(questIds);
         this.questEntries = new ArrayList<>(questEntries);
         this.playerReputation = playerReputation;
@@ -183,6 +180,7 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
         if (profession.isEmpty()) return false;
 
         List<ResourceLocation> quests = currentQuestIdsFor(player, survivor);
+        List<QuestEntry> entries = currentQuestEntriesFor(player, quests);
 
         survivor.beginMenuInteraction(player);
         player.openMenu(
@@ -194,28 +192,13 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
 
                     @Override
                     public @NotNull AbstractContainerMenu createMenu(int containerId, Inventory inv, Player p) {
-                        return new SurvivorQuestMenu(containerId, inv, survivor, quests, currentQuestEntriesFor(player, quests), ReputationApi.get(player));
+                        return new SurvivorQuestMenu(containerId, inv, survivor, quests, entries, ReputationApi.get(player));
                     }
                 },
-                buf -> {
-                    buf.writeVarInt(survivor.getId());
-                    buf.writeVarInt(ReputationApi.get(player));
-                    buf.writeVarInt(quests.size());
-                    for (ResourceLocation q : quests) {
-                        buf.writeResourceLocation(q);
-                    }
-                    List<QuestEntry> entries = currentQuestEntriesFor(player, quests);
-                    for (QuestEntry entry : entries) {
-                        buf.writeResourceLocation(entry.questId());
-                        buf.writeVarInt(entry.objectiveProgress().size());
-                        for (int value : entry.objectiveProgress()) {
-                            buf.writeVarInt(value);
-                        }
-                        buf.writeBoolean(entry.completed());
-                        buf.writeBoolean(entry.claimed());
-                        buf.writeBoolean(entry.maxReached());
-                    }
-                }
+                buf -> writeMenuState(
+                        buf,
+                        new MenuState(survivor.getId(), ReputationApi.get(player), quests, entries)
+                )
         );
         return true;
     }
@@ -243,7 +226,14 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
                 var def = EosDatapackIndex.quest(questId);
                 if (def.isDefined() && def.get().repeatable() && def.get().maxRepeats() > 0
                         && QuestApi.getCompletions(player, questId) >= def.get().maxRepeats()) {
-                    entries.add(new QuestEntry(questId, List.of(), false, false, true));
+                    entries.add(new QuestEntry(
+                            questId,
+                            List.of(),
+                            false,
+                            false,
+                            true,
+                            QuestApi.getCompletions(player, questId)
+                    ));
                 } else {
                     entries.add(QuestEntry.available(questId));
                 }
@@ -253,7 +243,8 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
                         progress.objectiveProgress(),
                         progress.completed(),
                         progress.claimed(),
-                        false
+                        false,
+                        QuestApi.getCompletions(player, questId)
                 ));
             }
         }
@@ -287,15 +278,72 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
             List<Integer> objectiveProgress,
             boolean completed,
             boolean claimed,
-            boolean maxReached
+            boolean maxReached,
+            int completionCount
     ) {
         public static QuestEntry available(ResourceLocation questId) {
-            return new QuestEntry(questId, List.of(), false, false, false);
+            return new QuestEntry(questId, List.of(), false, false, false, 0);
         }
 
         public boolean accepted() {
             return !objectiveProgress.isEmpty() || completed || claimed;
         }
+    }
+
+    protected static MenuState readMenuState(RegistryFriendlyByteBuf buf) {
+        int survivorEntityId = buf.readVarInt();
+        int playerReputation = buf.readVarInt();
+        int size = buf.readVarInt();
+        List<ResourceLocation> ids = new ArrayList<>();
+        for (int i = 0; i < size; i++) {
+            ids.add(buf.readResourceLocation());
+        }
+        List<QuestEntry> entries = new ArrayList<>();
+        for (int i = 0; i < size; i++) {
+            ResourceLocation questId = buf.readResourceLocation();
+            int progressSize = buf.readVarInt();
+            List<Integer> objectiveProgress = new ArrayList<>();
+            for (int j = 0; j < progressSize; j++) {
+                objectiveProgress.add(buf.readVarInt());
+            }
+            entries.add(new QuestEntry(
+                    questId,
+                    List.copyOf(objectiveProgress),
+                    buf.readBoolean(),
+                    buf.readBoolean(),
+                    buf.readBoolean(),
+                    buf.readVarInt()
+            ));
+        }
+        return new MenuState(survivorEntityId, playerReputation, List.copyOf(ids), List.copyOf(entries));
+    }
+
+    protected static void writeMenuState(RegistryFriendlyByteBuf buf, MenuState state) {
+        buf.writeVarInt(state.survivorEntityId());
+        buf.writeVarInt(state.playerReputation());
+        buf.writeVarInt(state.questIds().size());
+        for (ResourceLocation questId : state.questIds()) {
+            buf.writeResourceLocation(questId);
+        }
+        for (QuestEntry entry : state.questEntries()) {
+            buf.writeResourceLocation(entry.questId());
+            buf.writeVarInt(entry.objectiveProgress().size());
+            for (int value : entry.objectiveProgress()) {
+                buf.writeVarInt(value);
+            }
+            buf.writeBoolean(entry.completed());
+            buf.writeBoolean(entry.claimed());
+            buf.writeBoolean(entry.maxReached());
+            buf.writeVarInt(entry.completionCount());
+        }
+    }
+
+    protected record MenuState(
+            int survivorEntityId,
+            int playerReputation,
+            List<ResourceLocation> questIds,
+            List<QuestEntry> questEntries
+    ) {
     }
 
     private enum Action {

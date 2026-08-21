@@ -43,7 +43,8 @@ public record SurvivorQuestStatePayload(
                             entry.objectiveProgress(),
                             entry.completed(),
                             entry.claimed(),
-                            entry.maxReached()
+                            entry.maxReached(),
+                            entry.completionCount()
                     ))
                     .toList();
             menu.replaceQuestState(this.questIds, questEntries, this.playerReputation);
@@ -62,7 +63,8 @@ public record SurvivorQuestStatePayload(
                         entry.objectiveProgress(),
                         entry.completed(),
                         entry.claimed(),
-                        entry.maxReached()
+                        entry.maxReached(),
+                        entry.completionCount()
                 ))
                 .toList();
         return new SurvivorQuestStatePayload(survivor.getId(), ReputationApi.get(player), questIds, entries);
@@ -73,7 +75,8 @@ public record SurvivorQuestStatePayload(
             List<Integer> objectiveProgress,
             boolean completed,
             boolean claimed,
-            boolean maxReached
+            boolean maxReached,
+            int completionCount
     ) {
     }
 }
