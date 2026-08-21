@@ -1,7 +1,7 @@
 package com.flechazo.eos.entity;
 
 import com.flechazo.eos.entity.ai.goal.*;
-import com.flechazo.eos.reputation.ReputationApi;
+import com.flechazo.eos.reputation.ReputationEventService;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
@@ -71,12 +71,12 @@ public class NeutralSurvivorEntity extends AbstractSurvivorEntity {
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
-        this.goalSelector.addGoal(1, new SurvivorFleeGoal(this, 0.35F, 0.60F, 15.0F, 1.10, 1.35));
-        this.goalSelector.addGoal(2, new SurvivorAvoidCreeperGoal(this, 10.0F, 1.10, 1.35));
+        this.goalSelector.addGoal(1, new SurvivorUsePotionGoal(this, () -> this.tacticalInventory));
+        this.goalSelector.addGoal(2, new SurvivorFleeGoal(this, 0.35F, 0.60F, 15.0F, 1.10, 1.35));
+        this.goalSelector.addGoal(3, new SurvivorAvoidCreeperGoal(this, 10.0F, 1.10, 1.35));
         this.goalSelector.addGoal(3, new SurvivorLadderClimbGoal(this));
         this.goalSelector.addGoal(4, new OpenDoorGoal(this, true));
         this.goalSelector.addGoal(4, new OpenFenceGoal(this, true));
-        this.goalSelector.addGoal(4, new SurvivorUsePotionGoal(this, () -> this.tacticalInventory));
         this.goalSelector.addGoal(5, new SurvivorWeaponSwitchGoal(this, 6.0));
         this.goalSelector.addGoal(6, new NeutralGunAttackGoal(this));
         this.goalSelector.addGoal(7, new NeutralAttackGoal(this, 1.20, false));
@@ -129,8 +129,9 @@ public class NeutralSurvivorEntity extends AbstractSurvivorEntity {
                                         MobSpawnType spawnType,
                                         @Nullable SpawnGroupData groupData) {
         var data = super.finalizeSpawn(level, difficulty, spawnType, groupData);
-        assignRandomProfession();
+        assignRandomProfession(spawnType);
         if (getSkinUuid().isEmpty()) ensureSkinAssigned();
+        ensureSurvivorProfile(spawnType);
         return data;
     }
 
@@ -163,7 +164,10 @@ public class NeutralSurvivorEntity extends AbstractSurvivorEntity {
                 if (!this.level().isClientSide) {
                     if (!player.getAbilities().instabuild) stack.shrink(1);
                     this.heal(food.nutrition() * 2.0F);
-                    if (player instanceof ServerPlayer sp) ReputationApi.add(sp, 20);
+                    if (player instanceof ServerPlayer sp) {
+                        ReputationEventService.apply(sp, "help_neutral_survivor", 20,
+                                getAffiliationId(), 10, getUUID(), 30);
+                    }
                     this.discard();
                 }
                 return InteractionResult.sidedSuccess(this.level().isClientSide);

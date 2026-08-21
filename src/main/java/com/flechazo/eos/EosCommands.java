@@ -7,6 +7,7 @@ import com.flechazo.eos.entity.EosEntityTypes;
 import com.flechazo.eos.entity.FriendlySurvivorEntity;
 import com.flechazo.eos.quest.QuestApi;
 import com.flechazo.eos.reputation.ReputationApi;
+import com.flechazo.eos.reputation.ReputationEventService;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import net.minecraft.commands.CommandSourceStack;
@@ -47,8 +48,9 @@ public final class EosCommands {
                                                 .executes(ctx -> {
                                                     ServerPlayer player = ctx.getSource().getPlayerOrException();
                                                     int value = IntegerArgumentType.getInteger(ctx, "value");
-                                                    ReputationApi.set(player, value);
-                                                    ctx.getSource().sendSuccess(() -> Component.literal("reputation=" + value), false);
+                                                    ReputationEventService.setGlobal(player, value, "admin_command_set");
+                                                    ctx.getSource().sendSuccess(() -> Component.literal(
+                                                            "reputation=" + ReputationEventService.global(player)), false);
                                                     return 1;
                                                 })))
                                 .then(Commands.literal("add")
@@ -56,7 +58,8 @@ public final class EosCommands {
                                                 .executes(ctx -> {
                                                     ServerPlayer player = ctx.getSource().getPlayerOrException();
                                                     int delta = IntegerArgumentType.getInteger(ctx, "delta");
-                                                    ReputationApi.add(player, delta);
+                                                    ReputationEventService.apply(player, "admin_command_add", delta,
+                                                            null, 0, null, 0);
                                                     int rep = ReputationApi.get(player);
                                                     ctx.getSource().sendSuccess(() -> Component.literal("reputation=" + rep), false);
                                                     return 1;

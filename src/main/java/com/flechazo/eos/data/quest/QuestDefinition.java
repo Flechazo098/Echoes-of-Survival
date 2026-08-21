@@ -25,6 +25,9 @@ public record QuestDefinition(
         TextKey title,
         TextKey description,
         ResourceLocation type,
+        ResourceLocation category,
+        CompoundTag requirements,
+        int weight,
         Maybe<Either<Integer, String>> reputationGate,
         List<Objective> objectives,
         Rewards rewards,
@@ -36,6 +39,11 @@ public record QuestDefinition(
             TextKey.CODEC.fieldOf("title").forGetter(QuestDefinition::title),
             TextKey.CODEC.fieldOf("description").forGetter(QuestDefinition::description),
             ResourceLocation.CODEC.fieldOf("type").forGetter(QuestDefinition::type),
+            ResourceLocation.CODEC.optionalFieldOf("category",
+                    ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "profession"))
+                    .forGetter(QuestDefinition::category),
+            CompoundTag.CODEC.optionalFieldOf("requirements", new CompoundTag()).forGetter(QuestDefinition::requirements),
+            Codec.INT.optionalFieldOf("weight", 100).forGetter(QuestDefinition::weight),
             CodecUtil.maybeFieldCodec("require_reputation", Codec.either(Codec.INT, Codec.STRING)).forGetter(QuestDefinition::reputationGate),
             Objective.CODEC.listOf().fieldOf("objectives").forGetter(QuestDefinition::objectives),
             Rewards.CODEC.fieldOf("rewards").forGetter(QuestDefinition::rewards),
@@ -47,6 +55,13 @@ public record QuestDefinition(
     public static final ResourceLocation TYPE_KILL_ENTITIES = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "kill_entities");
     public static final ResourceLocation TYPE_REACH_POSITION = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "reach_position");
     public static final ResourceLocation TYPE_EXPLORE_STRUCTURE = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "explore_structure");
+    public static final ResourceLocation TYPE_VISIT_LOCATION = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "visit_location");
+    public static final ResourceLocation TYPE_VISIT_STRUCTURE = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "visit_structure");
+    public static final ResourceLocation TYPE_INTERACT_BLOCK = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "interact_block");
+    public static final ResourceLocation TYPE_INTERACT_ENTITY = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "interact_entity");
+    public static final ResourceLocation TYPE_RETRIEVE_ITEM = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "retrieve_item");
+    public static final ResourceLocation TYPE_ESCORT_ENTITY = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "escort_entity");
+    public static final ResourceLocation TYPE_CLEAR_AREA = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "clear_area");
 
     public record Objective(
             Maybe<ResourceLocation> itemTarget,
@@ -54,6 +69,7 @@ public record QuestDefinition(
             Maybe<CompoundTag> entityNbt,
             Maybe<PositionTarget> positionTarget,
             Maybe<ResourceLocation> structureTarget,
+            Maybe<ResourceLocation> blockTarget,
             int count
     ) {
         public static final Codec<Objective> CODEC = RecordCodecBuilder.create(
@@ -63,6 +79,7 @@ public record QuestDefinition(
                         CodecUtil.maybeFieldCodec("entity_nbt", CompoundTag.CODEC).forGetter(Objective::entityNbt),
                         CodecUtil.maybeFieldCodec("position", PositionTarget.CODEC).forGetter(Objective::positionTarget),
                         CodecUtil.maybeFieldCodec("structure", ResourceLocation.CODEC).forGetter(Objective::structureTarget),
+                        CodecUtil.maybeFieldCodec("block", ResourceLocation.CODEC).forGetter(Objective::blockTarget),
                         Codec.INT.optionalFieldOf("count", 1).forGetter(Objective::count)
                 ).apply(instance, Objective::new)
         );
@@ -100,6 +117,7 @@ public record QuestDefinition(
             if (data == null) return ValidationResult.failure("quest is null");
             if (data.questId == null) return ValidationResult.failure("quest_id is required");
             if (data.type == null) return ValidationResult.failure("type is required");
+            if (data.weight <= 0) return ValidationResult.failure("weight must be > 0");
             if (data.objectives == null || data.objectives.isEmpty()) {
                 return ValidationResult.failure("objectives must not be empty");
             }
@@ -108,7 +126,14 @@ public record QuestDefinition(
             boolean kill = data.type.equals(TYPE_KILL_ENTITIES);
             boolean reachPosition = data.type.equals(TYPE_REACH_POSITION);
             boolean exploreStructure = data.type.equals(TYPE_EXPLORE_STRUCTURE);
-            if (!submit && !kill && !reachPosition && !exploreStructure) {
+            boolean knownExtendedType = data.type.equals(TYPE_VISIT_LOCATION)
+                    || data.type.equals(TYPE_VISIT_STRUCTURE)
+                    || data.type.equals(TYPE_INTERACT_BLOCK)
+                    || data.type.equals(TYPE_INTERACT_ENTITY)
+                    || data.type.equals(TYPE_RETRIEVE_ITEM)
+                    || data.type.equals(TYPE_ESCORT_ENTITY)
+                    || data.type.equals(TYPE_CLEAR_AREA);
+            if (!submit && !kill && !reachPosition && !exploreStructure && !knownExtendedType) {
                 return ValidationResult.failure("unknown quest type: " + data.type);
             }
 
@@ -118,11 +143,12 @@ public record QuestDefinition(
                 boolean hasEntity = obj.entityTarget().isDefined();
                 boolean hasPosition = obj.positionTarget().isDefined();
                 boolean hasStructure = obj.structureTarget().isDefined();
+                boolean hasBlock = obj.blockTarget().isDefined();
                 int targetCount = (hasItem ? 1 : 0) + (hasEntity ? 1 : 0)
-                        + (hasPosition ? 1 : 0) + (hasStructure ? 1 : 0);
+                        + (hasPosition ? 1 : 0) + (hasStructure ? 1 : 0) + (hasBlock ? 1 : 0);
                 if (targetCount != 1) {
                     return ValidationResult.failure(
-                            "objective must have exactly one of 'item', 'entity', 'position', or 'structure'"
+                            "objective must have exactly one target: item, entity, position, structure, or block"
                     );
                 }
                 if (obj.entityNbt().isDefined() && !hasEntity) {
@@ -148,6 +174,12 @@ public record QuestDefinition(
                     return ValidationResult.failure("reach_position objective requires 'position'");
                 if (exploreStructure && obj.structureTarget().isEmpty())
                     return ValidationResult.failure("explore_structure objective requires 'structure'");
+                if (data.type.equals(TYPE_VISIT_LOCATION) && obj.positionTarget().isEmpty())
+                    return ValidationResult.failure("visit_location objective requires 'position'");
+                if (data.type.equals(TYPE_VISIT_STRUCTURE) && obj.structureTarget().isEmpty())
+                    return ValidationResult.failure("visit_structure objective requires 'structure'");
+                if (data.type.equals(TYPE_INTERACT_BLOCK) && obj.blockTarget().isEmpty())
+                    return ValidationResult.failure("interact_block objective requires 'block'");
                 if ((reachPosition || exploreStructure) && obj.count() != 1)
                     return ValidationResult.failure("reach_position and explore_structure objective 'count' must be 1");
             }

@@ -1,6 +1,9 @@
 package com.flechazo.eos.entity.ai.goal;
 
 import com.flechazo.eos.data.EosDatapackIndex;
+import com.flechazo.eos.config.EosConfigs;
+import com.flechazo.eos.entity.AbstractSurvivorEntity;
+import com.flechazo.eos.profile.SurvivorProfile;
 import com.google.common.collect.Iterables;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.InteractionHand;
@@ -30,6 +33,7 @@ public class SurvivorUsePotionGoal extends Goal {
     private int cooldown = 0;
     private int useTicks = 0;
     private boolean drinking = false;
+    private boolean healingThrow = false;
     private int targetSlot = -1;
     private LivingEntity throwTarget = null;
 
@@ -46,6 +50,7 @@ public class SurvivorUsePotionGoal extends Goal {
             return false;
         }
         if (mob.level().isClientSide) return false;
+        healingThrow = false;
 
         IItemHandler inv = invSupplier.get();
         if (inv == null) return false;
@@ -56,7 +61,23 @@ public class SurvivorUsePotionGoal extends Goal {
                 targetSlot = slot;
                 ItemStack stack = inv.getStackInSlot(slot);
                 drinking = !stack.is(Items.SPLASH_POTION) && !stack.is(Items.LINGERING_POTION);
-                if (!drinking) throwTarget = null;
+                if (!drinking) {
+                    throwTarget = null;
+                    healingThrow = true;
+                }
+                return true;
+            }
+        }
+
+        if (mob instanceof AbstractSurvivorEntity survivor
+                && survivor.hasSpecialty(SurvivorProfile.Specialty.FIRST_AID)) {
+            int healingSlot = findHealingPotion(inv);
+            LivingEntity ally = healingSlot < 0 ? null : findInjuredAlly(survivor);
+            if (ally != null) {
+                targetSlot = healingSlot;
+                drinking = false;
+                throwTarget = ally;
+                healingThrow = true;
                 return true;
             }
         }
@@ -124,8 +145,13 @@ public class SurvivorUsePotionGoal extends Goal {
                     entity.shoot(0, -0.5, 0, 0.5F, 1.0F);
                 }
                 mob.level().addFreshEntity(entity);
+                if (healingThrow && mob instanceof AbstractSurvivorEntity survivor
+                        && survivor.hasSpecialty(SurvivorProfile.Specialty.FIRST_AID)) {
+                    LivingEntity healed = throwTarget == null ? mob : throwTarget;
+                    healed.heal((float) (4.0D * EosConfigs.TRAITS.get().firstAidHealingBonus()));
+                }
             }
-            cooldown = COOLDOWN_TICKS;
+            cooldown = effectiveCooldown();
         }
     }
 
@@ -142,7 +168,7 @@ public class SurvivorUsePotionGoal extends Goal {
                     if (held.isEmpty()) mob.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
                 }
                 drinking = false;
-                cooldown = COOLDOWN_TICKS;
+                cooldown = effectiveCooldown();
             }
         }
     }
@@ -158,6 +184,27 @@ public class SurvivorUsePotionGoal extends Goal {
             if (EosDatapackIndex.matches(stack)) return i;
         }
         return -1;
+    }
+
+    private LivingEntity findInjuredAlly(AbstractSurvivorEntity healer) {
+        return healer.level().getEntitiesOfClass(AbstractSurvivorEntity.class,
+                        healer.getBoundingBox().inflate(8.0D),
+                        candidate -> candidate != healer
+                                && candidate.isAlive()
+                                && candidate.getAffiliationId().equals(healer.getAffiliationId())
+                                && candidate.getHealth() < candidate.getMaxHealth() * 0.60F)
+                .stream()
+                .min(java.util.Comparator.comparingDouble(candidate -> candidate.getHealth() / candidate.getMaxHealth()))
+                .orElse(null);
+    }
+
+    private int effectiveCooldown() {
+        if (mob instanceof AbstractSurvivorEntity survivor
+                && survivor.hasSpecialty(SurvivorProfile.Specialty.FIRST_AID)) {
+            return Math.max(1, (int) Math.round(COOLDOWN_TICKS
+                    * (1.0D - EosConfigs.TRAITS.get().firstAidCooldownReduction())));
+        }
+        return COOLDOWN_TICKS;
     }
 
     private static boolean isPotion(ItemStack stack) {

@@ -36,12 +36,12 @@ public class HostileSurvivorEntity extends AbstractSurvivorEntity {
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
-        this.goalSelector.addGoal(1, new SurvivorFleeGoal(this, 0.35F, 0.70F, 15.0F, 1.20, 1.45));
-        this.goalSelector.addGoal(2, new SurvivorAvoidCreeperGoal(this, 10.0F, 1.15, 1.50));
+        this.goalSelector.addGoal(1, new SurvivorUsePotionGoal(this, () -> this.tacticalInventory));
+        this.goalSelector.addGoal(2, new SurvivorFleeGoal(this, 0.35F, 0.70F, 15.0F, 1.20, 1.45));
+        this.goalSelector.addGoal(3, new SurvivorAvoidCreeperGoal(this, 10.0F, 1.15, 1.50));
         this.goalSelector.addGoal(3, new SurvivorLadderClimbGoal(this));
         this.goalSelector.addGoal(4, new OpenDoorGoal(this, true));
         this.goalSelector.addGoal(4, new OpenFenceGoal(this, true));
-        this.goalSelector.addGoal(5, new SurvivorUsePotionGoal(this, () -> this.tacticalInventory));
         this.goalSelector.addGoal(7, new SurvivorWeaponSwitchGoal(this, 6.0));
         this.goalSelector.addGoal(8, new SurvivorGunAttackGoal(this));
         this.goalSelector.addGoal(9, new SurvivorRangedCrossbowAttackGoal<>(this, 1.15, 18.0F));
@@ -87,8 +87,9 @@ public class HostileSurvivorEntity extends AbstractSurvivorEntity {
                                         MobSpawnType spawnType,
                                         @Nullable SpawnGroupData groupData) {
         var data = super.finalizeSpawn(level, difficulty, spawnType, groupData);
-        assignRandomProfession();
+        assignRandomProfession(spawnType);
         if (getSkinUuid().isEmpty()) ensureSkinAssigned();
+        ensureSurvivorProfile(spawnType);
         return data;
     }
 

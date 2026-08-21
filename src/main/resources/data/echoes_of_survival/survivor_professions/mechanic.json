@@ -1,5 +1,13 @@
 {
   "id": "echoes_of_survival:mechanic",
+  "group": "engineering",
+  "allowed_encounters": ["structure", "event", "camp"],
+  "preferred_structures": ["echoes_of_survival:ruins"],
+  "faction_weights": {
+    "echoes_of_survival:independent": 110,
+    "echoes_of_survival:raider": 30
+  },
+  "rarity": 45,
   "skin": "echoes_of_survival:default",
   "hostile_skin": "echoes_of_survival:default",
   "neutral_skin": "echoes_of_survival:default",

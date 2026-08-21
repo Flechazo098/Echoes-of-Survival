@@ -12,6 +12,7 @@ import net.minecraft.world.item.ItemStack;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Locale;
 
 @DataDriven(
         folder = "survivor_trade_pools",
@@ -33,7 +34,9 @@ public record TradePoolDefinition(
             int reputation,
             int maxUses,
             int reputationRequirement,
-            Optional<Either<Integer, String>> unlockCondition
+            Optional<Either<Integer, String>> unlockCondition,
+            TradeMode mode,
+            int procurementBudgetCost
     ) {
         public static final Codec<Trade> CODEC = RecordCodecBuilder.create(instance -> instance.group(
                 ItemStack.CODEC.fieldOf("buy").forGetter(Trade::buy),
@@ -41,12 +44,24 @@ public record TradePoolDefinition(
                 Codec.INT.optionalFieldOf("reputation", 0).forGetter(Trade::reputation),
                 Codec.INT.optionalFieldOf("max_uses", 1).forGetter(Trade::maxUses),
                 Codec.INT.optionalFieldOf("reputation_requirement", 0).forGetter(Trade::reputationRequirement),
-                Codec.either(Codec.INT, Codec.STRING).optionalFieldOf("unlock_condition").forGetter(Trade::unlockCondition)
+                Codec.either(Codec.INT, Codec.STRING).optionalFieldOf("unlock_condition").forGetter(Trade::unlockCondition),
+                TradeMode.CODEC.optionalFieldOf("mode", TradeMode.SELL_TO_PLAYER).forGetter(Trade::mode),
+                Codec.INT.optionalFieldOf("procurement_budget_cost", 1).forGetter(Trade::procurementBudgetCost)
         ).apply(instance, Trade::new));
 
         public Maybe<Either<Integer, String>> unlockRequirement() {
             return OptionalOps.toMaybe(unlockCondition);
         }
+    }
+
+    public enum TradeMode {
+        SELL_TO_PLAYER,
+        PROCURE_FROM_PLAYER;
+
+        public static final Codec<TradeMode> CODEC = Codec.STRING.xmap(
+                value -> TradeMode.valueOf(value.toUpperCase(Locale.ROOT)),
+                value -> value.name().toLowerCase(Locale.ROOT)
+        );
     }
 
     public static final class Validator implements DataValidator<TradePoolDefinition> {
@@ -61,6 +76,9 @@ public record TradePoolDefinition(
                 if (trade.buy == null || trade.buy.isEmpty() || trade.sell == null || trade.sell.isEmpty())
                     return ValidationResult.failure("trade buy/sell is required");
                 if (trade.maxUses <= 0) return ValidationResult.failure("trade max_uses must be > 0");
+                if (trade.procurementBudgetCost < 0) {
+                    return ValidationResult.failure("trade procurement_budget_cost must be >= 0");
+                }
             }
             return ValidationResult.success();
         }

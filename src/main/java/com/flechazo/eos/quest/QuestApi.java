@@ -3,8 +3,9 @@ package com.flechazo.eos.quest;
 import com.flechazo.eos.data.EosDatapackIndex;
 import com.flechazo.eos.data.quest.QuestDefinition;
 import com.flechazo.eos.data.reputation.ReputationTiersDefinition;
+import com.flechazo.eos.entity.AbstractSurvivorEntity;
 import com.flechazo.eos.reputation.EosAttachments;
-import com.flechazo.eos.reputation.ReputationApi;
+import com.flechazo.eos.reputation.ReputationEventService;
 import net.minecraft.advancements.critereon.LocationPredicate;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
@@ -25,7 +26,20 @@ public final class QuestApi {
     }
 
     public static PlayerQuestState getState(ServerPlayer player) {
-        return player.getData(EosAttachments.PLAYER_QUESTS.get());
+        PlayerQuestState state = player.getData(EosAttachments.PLAYER_QUESTS.get());
+        if (state.instances().isEmpty() && !state.active().isEmpty()) {
+            List<QuestInstance> migrated = new ArrayList<>();
+            state.active().forEach((definitionId, progress) -> EosDatapackIndex.quest(definitionId).ifPresent(definition -> {
+                QuestInstance instance = QuestInstance.create(definition, player.level().getGameTime(), null, null)
+                        .withProgress(progress.objectiveProgress(), progress.claimed());
+                migrated.add(instance);
+            }));
+            if (!migrated.isEmpty()) {
+                state = new PlayerQuestState(state.active(), state.completions(), migrated);
+                setState(player, state);
+            }
+        }
+        return state;
     }
 
     private static void setState(ServerPlayer player, PlayerQuestState state) {
@@ -33,6 +47,11 @@ public final class QuestApi {
     }
 
     public static boolean accept(ServerPlayer player, ResourceLocation questId) {
+        return accept(player, questId, null);
+    }
+
+    public static boolean accept(ServerPlayer player, ResourceLocation questId, AbstractSurvivorEntity giver) {
+        if (giver != null) ReputationEventService.ensureInitialTrust(player, giver);
         var defOpt = EosDatapackIndex.quest(questId);
         if (defOpt.isEmpty()) return false;
         QuestDefinition def = defOpt.get();
@@ -43,7 +62,7 @@ public final class QuestApi {
         }
 
         if (def.reputationGate().isDefined()) {
-            int rep = ReputationApi.get(player);
+            int rep = ReputationEventService.global(player);
             int required = def.reputationGate().get().map(
                     v -> v,
                     tierName -> EosDatapackIndex.reputationTierByName(tierName)
@@ -54,12 +73,18 @@ public final class QuestApi {
         }
 
         PlayerQuestState state = getState(player);
-        Map<ResourceLocation, PlayerQuestState.QuestProgress> next = new HashMap<>(state.active());
-        if (next.containsKey(questId)) return false;
+        if (state.active().containsKey(questId)) return false;
 
         List<Integer> progress = new ArrayList<>(Collections.nCopies(def.objectives().size(), 0));
-        next.put(questId, new PlayerQuestState.QuestProgress(questId, List.copyOf(progress), false, false));
-        setState(player, new PlayerQuestState(next, state.completions()));
+        PlayerQuestState.QuestProgress questProgress = new PlayerQuestState.QuestProgress(
+                questId, List.copyOf(progress), false, false);
+        QuestInstance questInstance = QuestInstance.create(
+                def,
+                player.level().getGameTime(),
+                giver == null ? null : giver.getUUID(),
+                giver == null ? null : giver.getAffiliationId()
+        );
+        setState(player, state.addInstance(questInstance, questProgress));
         updateWorldObjectives(player);
         return true;
     }
@@ -72,6 +97,7 @@ public final class QuestApi {
         PlayerQuestState state = getState(player);
         PlayerQuestState.QuestProgress progress = state.active().get(questId);
         if (progress == null || !progress.completed() || progress.claimed()) return false;
+        Optional<QuestInstance> questInstance = state.activeInstance(questId);
 
         for (ItemStack reward : def.rewards().items()) {
             ItemStack stack = reward.copy();
@@ -80,16 +106,21 @@ public final class QuestApi {
                 player.drop(stack, false);
             }
         }
-        if (def.rewards().reputation() != 0) {
-            ReputationApi.add(player, def.rewards().reputation());
-        }
+        ResourceLocation factionId = questInstance
+                .map(instance -> ResourceLocation.tryParse(instance.contextData().getString("giver_faction")))
+                .orElse(null);
+        UUID giverUuid = questInstance.flatMap(QuestInstance::giverUuid).orElse(null);
+        int reputationReward = def.rewards().reputation();
+        ReputationEventService.apply(player, "complete_friendly_quest", reputationReward,
+                factionId, reputationReward, giverUuid,
+                giverUuid == null ? 0 : Math.clamp(Math.abs(reputationReward) / 2, 5, 20));
 
         Map<ResourceLocation, PlayerQuestState.QuestProgress> next = new HashMap<>(state.active());
         Map<ResourceLocation, Integer> nextCompletions = new HashMap<>(state.completions());
+        nextCompletions.merge(questId, 1, Integer::sum);
 
         if (def.repeatable()) {
             next.remove(questId);
-            nextCompletions.merge(questId, 1, Integer::sum);
         } else {
             next.put(questId, new PlayerQuestState.QuestProgress(
                     progress.questId(),
@@ -99,12 +130,67 @@ public final class QuestApi {
             ));
         }
 
-        setState(player, new PlayerQuestState(next, Map.copyOf(nextCompletions)));
+        setState(player, state.withActiveAndCompletions(next, Map.copyOf(nextCompletions)));
         return true;
     }
 
     public static int getCompletions(ServerPlayer player, ResourceLocation questId) {
         return getState(player).completions().getOrDefault(questId, 0);
+    }
+
+    /** Generic hook for EoS-specific objectives and optional quest-mod compatibility layers. */
+    public static boolean advanceObjective(
+            ServerPlayer player,
+            UUID instanceUuid,
+            String objectiveId,
+            int amount
+    ) {
+        if (player == null || instanceUuid == null || objectiveId == null || amount <= 0) return false;
+        PlayerQuestState state = getState(player);
+        Optional<QuestInstance> instanceOptional = state.instance(instanceUuid);
+        if (instanceOptional.isEmpty() || instanceOptional.get().claimed()) return false;
+        QuestInstance instance = instanceOptional.get();
+        PlayerQuestState.QuestProgress progress = state.active().get(instance.definitionId());
+        if (progress == null || progress.completed()) return false;
+
+        int objectiveIndex = -1;
+        for (int i = 0; i < instance.objectives().size(); i++) {
+            if (instance.objectives().get(i).objectiveId().equals(objectiveId)) {
+                objectiveIndex = i;
+                break;
+            }
+        }
+        if (objectiveIndex < 0) return false;
+
+        List<Integer> nextProgress = new ArrayList<>(progress.objectiveProgress());
+        while (nextProgress.size() < instance.objectives().size()) nextProgress.add(0);
+        ObjectiveInstance objective = instance.objectives().get(objectiveIndex);
+        nextProgress.set(objectiveIndex, Math.min(objective.required(), nextProgress.get(objectiveIndex) + amount));
+        boolean completed = true;
+        for (int i = 0; i < instance.objectives().size(); i++) {
+            if (nextProgress.get(i) < instance.objectives().get(i).required()) {
+                completed = false;
+                break;
+            }
+        }
+        Map<ResourceLocation, PlayerQuestState.QuestProgress> nextActive = new HashMap<>(state.active());
+        nextActive.put(instance.definitionId(), new PlayerQuestState.QuestProgress(
+                instance.definitionId(), List.copyOf(nextProgress), completed, false));
+        setState(player, state.withActive(nextActive));
+        return true;
+    }
+
+    public static boolean bindFtbQuest(
+            ServerPlayer player,
+            UUID instanceUuid,
+            String ftbQuestId,
+            String ftbTaskId
+    ) {
+        PlayerQuestState state = getState(player);
+        Optional<QuestInstance> instance = state.instance(instanceUuid);
+        if (instance.isEmpty()) return false;
+        setState(player, state.replaceInstance(instance.get().withFtbBinding(ftbQuestId, ftbTaskId)));
+        return true;
     }
 
     public static void onKill(ServerPlayer player, LivingEntity killed) {
@@ -156,7 +242,7 @@ public final class QuestApi {
         }
 
         if (changed) {
-            setState(player, new PlayerQuestState(next, state.completions()));
+            setState(player, state.withActive(next));
         }
     }
 
@@ -177,8 +263,10 @@ public final class QuestApi {
             var definition = EosDatapackIndex.quest(questId);
             if (definition.isEmpty()) continue;
             QuestDefinition quest = definition.get();
-            boolean reachesPosition = quest.type().equals(QuestDefinition.TYPE_REACH_POSITION);
-            boolean exploresStructure = quest.type().equals(QuestDefinition.TYPE_EXPLORE_STRUCTURE);
+            boolean reachesPosition = quest.type().equals(QuestDefinition.TYPE_REACH_POSITION)
+                    || quest.type().equals(QuestDefinition.TYPE_VISIT_LOCATION);
+            boolean exploresStructure = quest.type().equals(QuestDefinition.TYPE_EXPLORE_STRUCTURE)
+                    || quest.type().equals(QuestDefinition.TYPE_VISIT_STRUCTURE);
             if (!reachesPosition && !exploresStructure) continue;
 
             List<Integer> objectiveProgress = normalizedProgress(progress, quest);
@@ -207,7 +295,7 @@ public final class QuestApi {
         }
 
         if (changed) {
-            setState(player, new PlayerQuestState(next, state.completions()));
+            setState(player, state.withActive(next));
         }
     }
 
@@ -280,7 +368,7 @@ public final class QuestApi {
                 true,
                 prog.claimed()
         ));
-        setState(player, new PlayerQuestState(next, state.completions()));
+        setState(player, state.withActive(next));
         return true;
     }
 

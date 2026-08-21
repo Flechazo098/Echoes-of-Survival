@@ -146,8 +146,10 @@ public class SurvivorQuestMenu extends AbstractContainerMenu {
         if (idx < 0 || idx >= questIds.size()) return false;
 
         ResourceLocation questId = questIds.get(idx);
+        Entity giverEntity = sp.level().getEntity(this.survivorEntityId);
+        FriendlySurvivorEntity giver = giverEntity instanceof FriendlySurvivorEntity survivor ? survivor : null;
         boolean handled = switch (action) {
-            case ACCEPT -> QuestApi.accept(sp, questId);
+            case ACCEPT -> QuestApi.accept(sp, questId, giver);
             case SUBMIT -> QuestApi.submitItems(sp, questId);
             case CLAIM -> QuestApi.claim(sp, questId);
         };

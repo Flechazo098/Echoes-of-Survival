@@ -11,6 +11,8 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 @DataDriven(
@@ -24,7 +26,13 @@ public record ProfessionDefinition(
         Optional<ResourceLocation> hostileSkin,
         Optional<ResourceLocation> neutralSkin,
         InitialEquipment initialEquipment,
-        Logic logic
+        Logic logic,
+        ProfessionGroup group,
+        List<ResourceLocation> allowedStructures,
+        List<ResourceLocation> preferredStructures,
+        List<String> allowedEncounters,
+        Map<ResourceLocation, Integer> factionWeights,
+        int rarity
 ) {
     public static final Codec<ProfessionDefinition> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             ResourceLocation.CODEC.fieldOf("id").forGetter(ProfessionDefinition::id),
@@ -32,8 +40,23 @@ public record ProfessionDefinition(
             ResourceLocation.CODEC.optionalFieldOf("hostile_skin").forGetter(ProfessionDefinition::hostileSkin),
             ResourceLocation.CODEC.optionalFieldOf("neutral_skin").forGetter(ProfessionDefinition::neutralSkin),
             InitialEquipment.CODEC.fieldOf("initial_equipment").forGetter(ProfessionDefinition::initialEquipment),
-            Logic.CODEC.fieldOf("logic").forGetter(ProfessionDefinition::logic)
+            Logic.CODEC.fieldOf("logic").forGetter(ProfessionDefinition::logic),
+            ProfessionGroup.CODEC.optionalFieldOf("group", ProfessionGroup.SERVICE).forGetter(ProfessionDefinition::group),
+            ResourceLocation.CODEC.listOf().optionalFieldOf("allowed_structures", List.of()).forGetter(ProfessionDefinition::allowedStructures),
+            ResourceLocation.CODEC.listOf().optionalFieldOf("preferred_structures", List.of()).forGetter(ProfessionDefinition::preferredStructures),
+            Codec.STRING.listOf().optionalFieldOf("allowed_encounters", List.of()).forGetter(ProfessionDefinition::allowedEncounters),
+            Codec.unboundedMap(ResourceLocation.CODEC, Codec.INT).optionalFieldOf("faction_weights", Map.of()).forGetter(ProfessionDefinition::factionWeights),
+            Codec.INT.optionalFieldOf("rarity", 100).forGetter(ProfessionDefinition::rarity)
     ).apply(instance, ProfessionDefinition::new));
+
+    public enum ProfessionGroup {
+        MEDICAL, ENGINEERING, SECURITY, LOGISTICS, INTELLIGENCE, SURVIVAL, PRODUCTION, SERVICE;
+
+        public static final Codec<ProfessionGroup> CODEC = Codec.STRING.xmap(
+                value -> ProfessionGroup.valueOf(value.toUpperCase(Locale.ROOT)),
+                value -> value.name().toLowerCase(Locale.ROOT)
+        );
+    }
 
     public Maybe<ResourceLocation> skinLibrary() {
         return OptionalOps.toMaybe(skin);
@@ -80,6 +103,10 @@ public record ProfessionDefinition(
             if (data.id == null) return ValidationResult.failure("id is required");
             if (data.initialEquipment == null) return ValidationResult.failure("initial_equipment is required");
             if (data.logic == null) return ValidationResult.failure("logic is required");
+            if (data.rarity <= 0) return ValidationResult.failure("rarity must be > 0");
+            if (data.factionWeights.values().stream().anyMatch(weight -> weight < 0)) {
+                return ValidationResult.failure("faction_weights values must be >= 0");
+            }
             return ValidationResult.success();
         }
     }

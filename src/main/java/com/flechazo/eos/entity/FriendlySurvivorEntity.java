@@ -2,13 +2,16 @@ package com.flechazo.eos.entity;
 
 import cc.sighs.oelib.data.DataManager;
 import com.flechazo.eos.data.EosDatapackIndex;
+import com.flechazo.eos.config.EosConfigs;
 import com.flechazo.eos.data.reputation.ReputationTiersDefinition;
 import com.flechazo.eos.data.trade.ProfessionDefinition;
 import com.flechazo.eos.data.trade.TradePoolDefinition;
 import com.flechazo.eos.entity.ai.goal.*;
 import com.flechazo.eos.menu.SurvivorQuestMenu;
 import com.flechazo.eos.reputation.ReputationApi;
+import com.flechazo.eos.reputation.ReputationEventService;
 import com.flechazo.eos.reputation.ReputationTiers;
+import com.flechazo.eos.squad.SquadApi;
 import com.flechazo.hkt.Maybe;
 import com.flechazo.hkt.business.core.Attempts;
 import net.minecraft.core.component.DataComponentPredicate;
@@ -52,22 +55,18 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.UUID;
+import java.util.Map;
 
 public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     private static final int INTERACTION_COMBAT_GRACE_TICKS = 100;
     private static final double GUARD_COMBAT_RADIUS = 16.0D;
     private static final double GUARD_COMBAT_RADIUS_SQ = GUARD_COMBAT_RADIUS * GUARD_COMBAT_RADIUS;
-    private static final EntityDataAccessor<String> PROFESSION_ID =
-            SynchedEntityData.defineId(FriendlySurvivorEntity.class, EntityDataSerializers.STRING);
-    private static final EntityDataAccessor<String> SKIN_UUID =
-            SynchedEntityData.defineId(FriendlySurvivorEntity.class, EntityDataSerializers.STRING);
-    private static final EntityDataAccessor<String> SKIN_USERNAME =
-            SynchedEntityData.defineId(FriendlySurvivorEntity.class, EntityDataSerializers.STRING);
     private static final EntityDataAccessor<String> RECRUIT_OWNER_UUID =
             SynchedEntityData.defineId(FriendlySurvivorEntity.class, EntityDataSerializers.STRING);
     private static final EntityDataAccessor<Integer> PATROL_MODE =
@@ -77,22 +76,26 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     private static final EntityDataAccessor<Optional<BlockPos>> GUARD_POS =
             SynchedEntityData.defineId(FriendlySurvivorEntity.class, EntityDataSerializers.OPTIONAL_BLOCK_POS);
 
-    private static final String NBT_PROFESSION_ID = "EosProfessionId";
-    private static final String NBT_SKIN_UUID = "EosSkinUuid";
-    private static final String NBT_SKIN_USERNAME = "EosSkinUsername";
     private static final String NBT_RECRUIT_OWNER_UUID = "EosRecruitOwnerUuid";
     private static final String NBT_PATROL_MODE = "EosPatrolMode";
     private static final String NBT_ATTACK_MODE = "EosAttackMode";
+    private static final String NBT_TRADE_LEDGER = "EosTradeLedger";
 
     public enum PatrolMode {
-        WANDER, FOLLOW, GUARD
+        WANDER, FOLLOW, GUARD, SETTLEMENT, WORK, PATROL, REST
     }
 
     public enum AttackMode {
         PASSIVE, NEUTRAL, AGGRESSIVE, RAID
     }
 
-    private final List<Integer> offerReputationGains = new ArrayList<>();
+    private final List<String> offerLedgerKeys = new ArrayList<>();
+    private final List<TradePoolDefinition.TradeMode> offerModes = new ArrayList<>();
+    private final List<Integer> offerBudgetCosts = new ArrayList<>();
+    private final Map<String, Integer> persistentTradeUses = new HashMap<>();
+    private int procurementBudget;
+    private long lastRestockDay = Long.MIN_VALUE;
+    private long lastTradeTrustDay = Long.MIN_VALUE;
     private boolean chargingCrossbow = false;
     private int lastCombatTick = -100000;
     private final FoodData survivorFood = new FoodData();
@@ -120,6 +123,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
                     ensureSkinAssigned(profession);
                     applyProfessionEquipment(profession);
                 });
+        ensureSurvivorProfile(spawnType);
         return data;
     }
 
@@ -134,9 +138,6 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     @Override
     protected void defineSynchedData(SynchedEntityData.Builder builder) {
         super.defineSynchedData(builder);
-        builder.define(PROFESSION_ID, "");
-        builder.define(SKIN_UUID, "");
-        builder.define(SKIN_USERNAME, "");
         builder.define(RECRUIT_OWNER_UUID, "");
         builder.define(PATROL_MODE, 0);
         builder.define(ATTACK_MODE, AttackMode.NEUTRAL.ordinal());
@@ -152,21 +153,32 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     }
 
     public PatrolMode getPatrolMode() {
-        return PatrolMode.values()[this.entityData.get(PATROL_MODE)];
+        int value = this.entityData.get(PATROL_MODE);
+        return value >= 0 && value < PatrolMode.values().length ? PatrolMode.values()[value] : PatrolMode.WANDER;
     }
 
     public void setPatrolMode(PatrolMode mode) {
         this.entityData.set(PATROL_MODE, mode.ordinal());
-        if (mode == PatrolMode.GUARD) {
+        if (isStationaryAssignment(mode)) {
             setGuardPos(this.blockPosition());
+        }
+        if (mode == PatrolMode.REST) {
+            this.setTarget(null);
+            this.getNavigation().stop();
         }
     }
 
     public PatrolMode cyclePatrolMode() {
-        PatrolMode[] vals = PatrolMode.values();
-        PatrolMode next = vals[(getPatrolMode().ordinal() + 1) % vals.length];
+        PatrolMode[] commands = {PatrolMode.FOLLOW, PatrolMode.GUARD, PatrolMode.SETTLEMENT,
+                PatrolMode.WORK, PatrolMode.PATROL, PatrolMode.REST};
+        int current = java.util.Arrays.asList(commands).indexOf(getPatrolMode());
+        PatrolMode next = commands[(current + 1) % commands.length];
         setPatrolMode(next);
         return next;
+    }
+
+    private static boolean isStationaryAssignment(PatrolMode mode) {
+        return mode == PatrolMode.GUARD || mode == PatrolMode.SETTLEMENT || mode == PatrolMode.WORK;
     }
 
     public AttackMode getAttackMode() {
@@ -187,14 +199,14 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
-        this.goalSelector.addGoal(1, new ModeAwareFleeGoal());
-        this.goalSelector.addGoal(2, new ModeAwareAvoidCreeperGoal());
+        this.goalSelector.addGoal(1, new SurvivorUsePotionGoal(this, () -> this.tacticalInventory));
+        this.goalSelector.addGoal(2, new ModeAwareFleeGoal());
+        this.goalSelector.addGoal(3, new ModeAwareAvoidCreeperGoal());
         this.goalSelector.addGoal(3, new ReturnToGuardGoal());
         this.goalSelector.addGoal(4, new SurvivorLadderClimbGoal(this));
         this.goalSelector.addGoal(5, new OpenDoorGoal(this, true));
         this.goalSelector.addGoal(5, new OpenFenceGoal(this, true));
         this.goalSelector.addGoal(6, new SurvivorEatFoodGoal(this, 0.45F, 20 * 6, 20 * 10, 10.0F));
-        this.goalSelector.addGoal(7, new SurvivorUsePotionGoal(this, () -> this.tacticalInventory));
         this.goalSelector.addGoal(8, new FollowRecruitOwnerGoal(this, 1.05, 4.0F, 16.0F));
         this.goalSelector.addGoal(9, new SurvivorWeaponSwitchGoal(this, 4.0));
 
@@ -218,7 +230,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         private final Goal wrapped = new SurvivorFleeGoal(FriendlySurvivorEntity.this, 0.35F, 0.60F, 15.0F, 1.10, 1.30);
 
         @Override public boolean canUse() {
-            if (getPatrolMode() == PatrolMode.GUARD) return false;
+            if (isStationaryAssignment(getPatrolMode()) || getPatrolMode() == PatrolMode.REST) return false;
             if (getAttackMode() == AttackMode.RAID || getAttackMode() == AttackMode.AGGRESSIVE) return false;
             return wrapped.canUse();
         }
@@ -232,7 +244,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         private final Goal wrapped = new SurvivorAvoidCreeperGoal(FriendlySurvivorEntity.this, 10.0F, 1.10, 1.35);
 
         @Override public boolean canUse() {
-            if (getPatrolMode() == PatrolMode.GUARD) return false;
+            if (isStationaryAssignment(getPatrolMode()) || getPatrolMode() == PatrolMode.REST) return false;
             return wrapped.canUse();
         }
         @Override public boolean canContinueToUse() { return wrapped.canContinueToUse(); }
@@ -247,7 +259,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         private int repath;
 
         @Override public boolean canUse() {
-            if (getPatrolMode() != PatrolMode.GUARD) return false;
+            if (!isStationaryAssignment(getPatrolMode())) return false;
             if (getTarget() != null) return false;
             return getGuardPos()
                     .map(pos -> distanceToSqr(pos.getX(), pos.getY(), pos.getZ()) > RETURN_DIST_SQ)
@@ -325,9 +337,12 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     private class ModeAwareStrollGoal extends Goal {
         private final Goal wrapped = new RandomStrollGoal(FriendlySurvivorEntity.this, 0.9);
         @Override public boolean canUse() {
-            return getPatrolMode() == PatrolMode.WANDER && wrapped.canUse();
+            return (getPatrolMode() == PatrolMode.WANDER || getPatrolMode() == PatrolMode.PATROL) && wrapped.canUse();
         }
-        @Override public boolean canContinueToUse() { return getPatrolMode() == PatrolMode.WANDER && wrapped.canContinueToUse(); }
+        @Override public boolean canContinueToUse() {
+            return (getPatrolMode() == PatrolMode.WANDER || getPatrolMode() == PatrolMode.PATROL)
+                    && wrapped.canContinueToUse();
+        }
         @Override public void start() { wrapped.start(); }
         @Override public void stop() { wrapped.stop(); }
         @Override public void tick() { wrapped.tick(); }
@@ -479,14 +494,14 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     }
 
     private boolean isWithinGuardCombatArea(LivingEntity target) {
-        if (target == null || getPatrolMode() != PatrolMode.GUARD) return true;
+        if (target == null || !isStationaryAssignment(getPatrolMode())) return true;
         return getGuardPos()
                 .map(guardPos -> target.distanceToSqr(guardPos.getX() + 0.5D, guardPos.getY(), guardPos.getZ() + 0.5D) <= GUARD_COMBAT_RADIUS_SQ)
                 .orElse(true);
     }
 
     private void tickGuardCombatLeash() {
-        if (getPatrolMode() != PatrolMode.GUARD) return;
+        if (!isStationaryAssignment(getPatrolMode())) return;
         LivingEntity target = this.getTarget();
         if (target != null && !isWithinGuardCombatArea(target)) {
             this.setTarget(null);
@@ -526,7 +541,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
 
     @Override
     public boolean canAttack(LivingEntity target) {
-        return !isOwnedBy(target) && super.canAttack(target);
+        return getPatrolMode() != PatrolMode.REST && !isOwnedBy(target) && super.canAttack(target);
     }
 
     @Override
@@ -542,52 +557,6 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
             markCombat();
         }
         super.setTarget(target);
-    }
-
-    @Override
-    public Maybe<ResourceLocation> getProfessionId() {
-        return Maybe.ofNullable(this.entityData.get(PROFESSION_ID))
-                .filter(raw -> !raw.isBlank())
-                .flatMap(raw -> Maybe.ofNullable(ResourceLocation.tryParse(raw)));
-    }
-
-    public void setProfessionId(ResourceLocation id) {
-        this.entityData.set(PROFESSION_ID, id.toString());
-    }
-
-    @Override
-    public Maybe<UUID> getSkinUuid() {
-        return Maybe.ofNullable(this.entityData.get(SKIN_UUID))
-                .filter(raw -> !raw.isBlank())
-                .flatMap(raw -> Attempts.maybe(() -> UUID.fromString(raw)));
-    }
-
-    public void setSkinUuid(UUID uuid) {
-        this.entityData.set(SKIN_UUID, uuid != null ? uuid.toString() : "");
-        if (uuid != null) {
-            EosDatapackIndex.skinLibraryUsername(uuid).ifPresent(this::setSkinUsername);
-        }
-    }
-
-    @Override
-    public Maybe<String> getSkinUsername() {
-        return Maybe.ofNullable(this.entityData.get(SKIN_USERNAME)).filter(raw -> !raw.isBlank());
-    }
-
-    @Override
-    public void setSkinUsername(@Nullable String username) {
-        this.entityData.set(SKIN_USERNAME, username != null ? username.trim() : "");
-    }
-
-    @Override
-    public void setSkinProfile(@Nullable EosDatapackIndex.SkinProfile profile) {
-        if (profile == null) {
-            setSkinUuid(null);
-            setSkinUsername(null);
-            return;
-        }
-        setSkinUuid(profile.uuid().fold(() -> null, uuid -> uuid));
-        setSkinUsername(profile.name());
     }
 
     public Maybe<UUID> getRecruitOwnerUuid() {
@@ -606,6 +575,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
 
     public boolean recruit(ServerPlayer player) {
         if (this.level().isClientSide || player == null || !this.isAlive() || this.isBaby()) return false;
+        ReputationEventService.ensureInitialTrust(player, this);
 
         Maybe<UUID> currentOwner = getRecruitOwnerUuid();
         if (currentOwner.isDefined()) {
@@ -617,13 +587,29 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
             return false;
         }
 
-        int reputation = ReputationApi.get(player);
-        if (!ReputationTiers.canRecruit(reputation)) {
+        var recruitment = EosConfigs.SURVIVOR.get();
+        if (ReputationEventService.global(player) < recruitment.globalRecruitThreshold()) {
             player.displayClientMessage(Component.translatable("message.echoes_of_survival.recruit.locked"), true);
+            return false;
+        }
+        if (ReputationEventService.faction(player, getAffiliationId()) < recruitment.factionRecruitThreshold()) {
+            player.displayClientMessage(Component.translatable("message.echoes_of_survival.recruit.faction_locked"), true);
+            return false;
+        }
+        if (ReputationEventService.trust(player, this) < recruitment.personalTrustRecruitThreshold()) {
+            player.displayClientMessage(Component.translatable("message.echoes_of_survival.recruit.trust_locked",
+                    recruitment.personalTrustRecruitThreshold()), true);
+            return false;
+        }
+        if (!SquadApi.hasAvailableSlot(player)) {
+            player.displayClientMessage(Component.translatable("message.echoes_of_survival.recruit.squad_full",
+                    SquadApi.maxFollowingSurvivors(player)), true);
             return false;
         }
 
         this.entityData.set(RECRUIT_OWNER_UUID, player.getUUID().toString());
+        setPatrolMode(PatrolMode.FOLLOW);
+        SquadApi.addMember(player, this.getUUID());
         this.getNavigation().stop();
         this.setTarget(null);
         emitBubbleEvent("interaction", "recruited");
@@ -639,6 +625,8 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         }
 
         this.entityData.set(RECRUIT_OWNER_UUID, "");
+        setPatrolMode(PatrolMode.WANDER);
+        SquadApi.removeMember(player, this.getUUID());
         this.getNavigation().stop();
         this.setTarget(null);
         emitBubbleEvent("interaction", "dismissed");
@@ -649,33 +637,23 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     @Override
     public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
-        getProfessionId().ifPresent(id -> tag.putString(NBT_PROFESSION_ID, id.toString()));
-        getSkinUuid().ifPresent(uuid -> tag.putString(NBT_SKIN_UUID, uuid.toString()));
-        getSkinUsername().ifPresent(username -> tag.putString(NBT_SKIN_USERNAME, username));
         getRecruitOwnerUuid().ifPresent(uuid -> tag.putString(NBT_RECRUIT_OWNER_UUID, uuid.toString()));
         tag.putString(NBT_PATROL_MODE, getPatrolMode().name());
         tag.putString(NBT_ATTACK_MODE, getAttackMode().name());
         this.survivorFood.addAdditionalSaveData(tag);
+        CompoundTag tradeLedger = new CompoundTag();
+        CompoundTag uses = new CompoundTag();
+        persistentTradeUses.forEach(uses::putInt);
+        tradeLedger.put("uses", uses);
+        tradeLedger.putInt("procurement_budget", procurementBudget);
+        tradeLedger.putLong("last_restock_day", lastRestockDay);
+        tradeLedger.putLong("last_trade_trust_day", lastTradeTrustDay);
+        tag.put(NBT_TRADE_LEDGER, tradeLedger);
     }
 
     @Override
     public void readAdditionalSaveData(CompoundTag tag) {
         super.readAdditionalSaveData(tag);
-        if (tag.contains(NBT_PROFESSION_ID)) {
-            Maybe.ofNullable(tag.getString(NBT_PROFESSION_ID))
-                    .filter(raw -> !raw.isBlank())
-                    .flatMap(raw -> Maybe.ofNullable(ResourceLocation.tryParse(raw)))
-                    .ifPresent(this::setProfessionId);
-        }
-        if (tag.contains(NBT_SKIN_UUID)) {
-            Maybe.ofNullable(tag.getString(NBT_SKIN_UUID))
-                    .filter(raw -> !raw.isBlank())
-                    .flatMap(raw -> Attempts.maybe(() -> UUID.fromString(raw)))
-                    .ifPresent(this::setSkinUuid);
-        }
-        if (tag.contains(NBT_SKIN_USERNAME)) {
-            setSkinUsername(tag.getString(NBT_SKIN_USERNAME));
-        }
         if (tag.contains(NBT_RECRUIT_OWNER_UUID)) {
             this.entityData.set(RECRUIT_OWNER_UUID, Maybe.ofNullable(tag.getString(NBT_RECRUIT_OWNER_UUID))
                     .filter(raw -> !raw.isBlank())
@@ -690,6 +668,15 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         if (tag.contains(NBT_ATTACK_MODE, Tag.TAG_STRING)) {
             try { setAttackMode(AttackMode.valueOf(tag.getString(NBT_ATTACK_MODE))); } catch (Exception ignored) {}
         }
+        if (tag.contains(NBT_TRADE_LEDGER, Tag.TAG_COMPOUND)) {
+            CompoundTag tradeLedger = tag.getCompound(NBT_TRADE_LEDGER);
+            persistentTradeUses.clear();
+            CompoundTag uses = tradeLedger.getCompound("uses");
+            uses.getAllKeys().forEach(key -> persistentTradeUses.put(key, Math.max(0, uses.getInt(key))));
+            procurementBudget = Math.max(0, tradeLedger.getInt("procurement_budget"));
+            lastRestockDay = tradeLedger.getLong("last_restock_day");
+            lastTradeTrustDay = tradeLedger.getLong("last_trade_trust_day");
+        }
     }
 
     @Override
@@ -703,7 +690,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         if (!this.level().isClientSide && player != null) {
             this.tradesDuringCurrentSession = 0;
             this.offers = new MerchantOffers();
-            this.offerReputationGains.clear();
+            clearOfferLedgerView();
             this.updateTrades();
         }
     }
@@ -713,19 +700,20 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         if (this.level().isClientSide) return;
 
         ensureProfessionAssigned();
+        restockEconomyIfDue();
 
         Player tradingPlayer = getTradingPlayer();
         int reputation = tradingPlayer instanceof ServerPlayer sp ? ReputationApi.get(sp) : 0;
         if (tradingPlayer instanceof ServerPlayer && !ReputationTiers.canTradeFriendly(reputation)) {
             this.offers = new MerchantOffers();
-            this.offerReputationGains.clear();
+            clearOfferLedgerView();
             return;
         }
 
         Maybe<ResourceLocation> profIdOpt = getProfessionId();
         if (profIdOpt.isEmpty()) {
             this.offers = new MerchantOffers();
-            this.offerReputationGains.clear();
+            clearOfferLedgerView();
             return;
         }
         ResourceLocation professionId = profIdOpt.get();
@@ -733,14 +721,16 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         var profession = EosDatapackIndex.profession(professionId);
         if (profession.isEmpty()) {
             this.offers = new MerchantOffers();
-            this.offerReputationGains.clear();
+            clearOfferLedgerView();
             return;
         }
 
         double multiplier = ReputationTiers.priceMultiplier(reputation);
 
         MerchantOffers nextOffers = new MerchantOffers();
-        List<Integer> nextRep = new ArrayList<>();
+        List<String> nextKeys = new ArrayList<>();
+        List<TradePoolDefinition.TradeMode> nextModes = new ArrayList<>();
+        List<Integer> nextBudgetCosts = new ArrayList<>();
 
         List<TradePoolDefinition> pools = EosDatapackIndex.tradePools(professionId, profession.get().logic().tradePools());
         for (TradePoolDefinition pool : pools) {
@@ -755,6 +745,11 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
                 ItemStack buy = trade.buy();
                 ItemStack sell = trade.sell();
                 if (buy.isEmpty() || sell.isEmpty()) continue;
+                String ledgerKey = tradeLedgerKey(professionId, buy, sell, trade.mode());
+                int used = persistentTradeUses.getOrDefault(ledgerKey, 0);
+                if (used >= trade.maxUses()) continue;
+                if (trade.mode() == TradePoolDefinition.TradeMode.PROCURE_FROM_PLAYER
+                        && procurementBudget < trade.procurementBudgetCost()) continue;
 
                 MerchantOffer offer = new MerchantOffer(
                         itemCost(buy),
@@ -763,6 +758,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
                         0,
                         0.0F
                 );
+                for (int i = 0; i < used; i++) offer.increaseUses();
 
                 int desiredCount = Math.max(1, (int) Math.ceil(buy.getCount() * multiplier));
                 int diff = desiredCount - buy.getCount();
@@ -771,13 +767,19 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
                 }
 
                 nextOffers.add(offer);
-                nextRep.add(trade.reputation());
+                nextKeys.add(ledgerKey);
+                nextModes.add(trade.mode());
+                nextBudgetCosts.add(trade.procurementBudgetCost());
             }
         }
 
         this.offers = nextOffers;
-        this.offerReputationGains.clear();
-        this.offerReputationGains.addAll(nextRep);
+        this.offerLedgerKeys.clear();
+        this.offerLedgerKeys.addAll(nextKeys);
+        this.offerModes.clear();
+        this.offerModes.addAll(nextModes);
+        this.offerBudgetCosts.clear();
+        this.offerBudgetCosts.addAll(nextBudgetCosts);
     }
 
     @Override
@@ -801,6 +803,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
     }
 
     public void beginOverlayInteraction(ServerPlayer player) {
+        ReputationEventService.ensureInitialTrust(player, this);
         this.interactingPlayerId = player.getUUID();
         this.interactionLockMode = InteractionLockMode.OVERLAY;
         if (!isInInteractionCombat()) {
@@ -817,6 +820,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
 
     public boolean openTradeInterface(ServerPlayer player) {
         if (!this.isAlive() || this.isTrading() || this.isBaby()) return false;
+        ReputationEventService.ensureInitialTrust(player, this);
 
         ensureProfessionAssigned();
         int reputation = ReputationApi.get(player);
@@ -835,7 +839,7 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
 
         this.setTradingPlayer(player);
         this.offers = new MerchantOffers();
-        this.offerReputationGains.clear();
+        clearOfferLedgerView();
         this.updateTrades();
 
         if (this.getOffers().isEmpty()) {
@@ -887,34 +891,73 @@ public class FriendlySurvivorEntity extends AbstractSurvivorEntity {
         super.notifyTrade(offer);
         this.tradesDuringCurrentSession++;
         emitBubbleEvent("interaction", "trade_success");
-        if (this.getTradingPlayer() instanceof ServerPlayer player) {
-            int rep = reputationGainForOffer(offer);
-            if (rep != 0) {
-                ReputationApi.add(player, rep);
+        int index = this.offers == null ? -1 : this.offers.indexOf(offer);
+        if (index >= 0 && index < offerLedgerKeys.size()) {
+            persistentTradeUses.merge(offerLedgerKeys.get(index), 1, Integer::sum);
+            if (offerModes.get(index) == TradePoolDefinition.TradeMode.PROCURE_FROM_PLAYER) {
+                procurementBudget = Math.max(0, procurementBudget - offerBudgetCosts.get(index));
             }
+        }
+        if (this.getTradingPlayer() instanceof ServerPlayer player) {
+            // Ordinary trades no longer grant global reputation. The persistent
+            // economy ledger awards at most one small daily trust milestone.
+            awardDailyTradeTrust(player);
         }
     }
 
     @Override
     public void die(DamageSource source) {
         super.die(source);
+        if (!this.level().isClientSide && this.level() instanceof ServerLevel serverLevel) {
+            getRecruitOwnerUuid()
+                    .map(uuid -> serverLevel.getServer().getPlayerList().getPlayer(uuid))
+                    .ifPresent(owner -> SquadApi.removeMember(owner, this.getUUID()));
+        }
         if (!this.level().isClientSide && source.getEntity() instanceof ServerPlayer player) {
             getProfessionId()
                     .flatMap(EosDatapackIndex::profession)
                     .ifPresent(prof -> {
                         int delta = prof.logic().reputationOnDeath();
                         if (delta != 0) {
-                            ReputationApi.add(player, delta);
+                            ReputationEventService.apply(player, "kill_friendly_survivor", delta,
+                                    getAffiliationId(), delta, getUUID(), -100);
                         }
                     });
         }
     }
 
-    private int reputationGainForOffer(MerchantOffer offer) {
-        if (offer == null || this.offers == null) return 0;
-        int idx = this.offers.indexOf(offer);
-        if (idx < 0 || idx >= offerReputationGains.size()) return 0;
-        return offerReputationGains.get(idx);
+    private void awardDailyTradeTrust(ServerPlayer player) {
+        long day = this.level().getDayTime() / 24000L;
+        if (lastTradeTrustDay == day) return;
+        lastTradeTrustDay = day;
+        int gain = EosConfigs.ECONOMY.get().dailyTradeTrustGain();
+        if (gain > 0) {
+            ReputationEventService.apply(player, "daily_trade_milestone", 0,
+                    getAffiliationId(), 0, getUUID(), gain);
+        }
+    }
+
+    private void restockEconomyIfDue() {
+        long day = this.level().getDayTime() / 24000L;
+        int interval = EosConfigs.ECONOMY.get().restockIntervalDays();
+        if (lastRestockDay == Long.MIN_VALUE || day - lastRestockDay >= interval) {
+            persistentTradeUses.clear();
+            procurementBudget = EosConfigs.ECONOMY.get().dailyProcurementBudget();
+            lastRestockDay = day;
+        }
+    }
+
+    private void clearOfferLedgerView() {
+        offerLedgerKeys.clear();
+        offerModes.clear();
+        offerBudgetCosts.clear();
+    }
+
+    private static String tradeLedgerKey(ResourceLocation professionId, ItemStack buy, ItemStack sell,
+                                         TradePoolDefinition.TradeMode mode) {
+        return professionId + "|" + mode.name() + "|"
+                + net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(buy.getItem()) + "x" + buy.getCount()
+                + "|" + net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(sell.getItem()) + "x" + sell.getCount();
     }
 
     private static ItemCost itemCost(ItemStack stack) {

@@ -2,6 +2,7 @@ package com.flechazo.eos.reputation;
 
 import com.flechazo.eos.EchoesofSurvival;
 import com.flechazo.eos.quest.PlayerQuestState;
+import com.flechazo.eos.squad.SquadState;
 import com.mojang.serialization.Codec;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.neoforged.bus.api.IEventBus;
@@ -27,10 +28,26 @@ public final class EosAttachments {
                     .build()
     );
 
+    public static final Supplier<AttachmentType<RelationshipState>> PLAYER_RELATIONSHIPS = ATTACHMENTS.register(
+            "player_relationships",
+            () -> AttachmentType.builder(RelationshipState::empty)
+                    .serialize(RelationshipState.CODEC)
+                    .copyOnDeath()
+                    .build()
+    );
+
     public static final Supplier<AttachmentType<PlayerQuestState>> PLAYER_QUESTS = ATTACHMENTS.register(
             "player_quests",
             () -> AttachmentType.builder(PlayerQuestState::empty)
                     .serialize(PlayerQuestState.CODEC)
+                    .copyOnDeath()
+                    .build()
+    );
+
+    public static final Supplier<AttachmentType<SquadState>> PLAYER_SQUAD = ATTACHMENTS.register(
+            "player_squad",
+            () -> AttachmentType.builder(SquadState::empty)
+                    .serialize(SquadState.CODEC)
                     .copyOnDeath()
                     .build()
     );

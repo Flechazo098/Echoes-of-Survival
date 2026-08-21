@@ -2,6 +2,12 @@ package com.flechazo.eos.gametest;
 
 import com.flechazo.eos.EchoesofSurvival;
 import com.flechazo.eos.entity.EosEntityTypes;
+import com.flechazo.eos.profile.SurvivorAffiliations;
+import com.flechazo.eos.quest.QuestInstance;
+import com.flechazo.eos.reputation.RelationshipState;
+import com.flechazo.eos.data.EosDatapackIndex;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.gametest.framework.GameTest;
@@ -71,16 +77,55 @@ public class SurvivorGameTests {
             e.setAngry(true);
             e.setBegging(true);
             e.setSkinUuid(java.util.UUID.randomUUID());
+            e.finalizeSpawn(h.getLevel(), h.getLevel().getCurrentDifficultyAt(e.blockPosition()),
+                    MobSpawnType.COMMAND, null);
+            if (e.getSurvivorProfile().isEmpty()) fail("profile not created");
+            var identity = e.getSurvivorProfile().get().identityUuid();
             var t = new net.minecraft.nbt.CompoundTag();
             e.addAdditionalSaveData(t);
             if (!t.getBoolean("EosNeutralAngry")) fail("nbt angry");
             if (!t.getBoolean("EosNeutralBegging")) fail("nbt beg");
             if (!t.contains("EosSkinUuid")) fail("nbt skin");
+            if (!t.contains("EosSurvivorProfile")) fail("nbt profile");
             var r = h.spawn(EosEntityTypes.NEUTRAL_SURVIVOR.get(), new BlockPos(2, 1, 3));
             r.readAdditionalSaveData(t);
             if (!r.isAngry()) fail("restored angry");
             if (!r.isBegging()) fail("restored beg");
             if (r.getSkinUuid().isEmpty()) fail("restored skin");
+            if (r.getSurvivorProfile().isEmpty()) fail("restored profile");
+            if (!r.getSurvivorProfile().get().identityUuid().equals(identity)) fail("profile identity changed");
+        });
+    }
+
+    @GameTest(template = "survivor_test_platform")
+    public static void relationship_state_codec_roundtrip(GameTestHelper h) {
+        h.succeedIf(() -> {
+            var survivorUuid = java.util.UUID.randomUUID();
+            var state = new RelationshipState(123,
+                    java.util.Map.of(SurvivorAffiliations.INDEPENDENT, 45),
+                    java.util.Map.of(survivorUuid, 67));
+            var encoded = RelationshipState.CODEC.encodeStart(NbtOps.INSTANCE, state).result().orElseThrow();
+            var decoded = RelationshipState.CODEC.parse(NbtOps.INSTANCE, encoded).result().orElseThrow();
+            if (!decoded.equals(state)) fail("relationship codec changed data");
+        });
+    }
+
+    @GameTest(template = "survivor_test_platform")
+    public static void quest_instance_binds_giver_and_context(GameTestHelper h) {
+        h.succeedIf(() -> {
+            ResourceLocation id = ResourceLocation.fromNamespaceAndPath(EchoesofSurvival.MODID, "medic_delivery");
+            var definition = EosDatapackIndex.quest(id).fold(
+                    () -> { throw new GameTestAssertException("quest definition missing"); },
+                    value -> value
+            );
+            var giver = java.util.UUID.randomUUID();
+            QuestInstance instance = QuestInstance.create(definition, h.getLevel().getGameTime(), giver,
+                    SurvivorAffiliations.INDEPENDENT);
+            if (instance.giverUuid().isEmpty() || !instance.giverUuid().get().equals(giver)) fail("giver not bound");
+            if (instance.instanceUuid() == null || instance.objectives().isEmpty()) fail("instance incomplete");
+            var encoded = QuestInstance.CODEC.encodeStart(NbtOps.INSTANCE, instance).result().orElseThrow();
+            var decoded = QuestInstance.CODEC.parse(NbtOps.INSTANCE, encoded).result().orElseThrow();
+            if (!decoded.instanceUuid().equals(instance.instanceUuid())) fail("instance UUID changed");
         });
     }
 

@@ -5,7 +5,7 @@
     { "id": "kill_neutral_survivor", "change": -20 },
     { "id": "help_neutral_survivor", "change": 20 },
     { "id": "complete_friendly_quest", "change": { "min": 10, "max": 50 } },
-    { "id": "trade_with_friendly", "change": 1 }
+    { "id": "trade_with_friendly", "change": 0 },
+    { "id": "daily_trade_milestone", "change": 0 }
   ]
 }
-

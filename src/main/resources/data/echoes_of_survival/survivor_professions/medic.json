@@ -1,5 +1,12 @@
 {
   "id": "echoes_of_survival:medic",
+  "group": "medical",
+  "allowed_encounters": ["wilderness", "structure", "event", "camp"],
+  "faction_weights": {
+    "echoes_of_survival:independent": 100,
+    "echoes_of_survival:raider": 35
+  },
+  "rarity": 55,
   "skin": "echoes_of_survival:default",
   "hostile_skin": "echoes_of_survival:default",
   "neutral_skin": "echoes_of_survival:default",

@@ -1,9 +1,12 @@
 package com.flechazo.eos.entity;
 
 import com.flechazo.eos.data.EosDatapackIndex;
+import com.flechazo.eos.config.EosConfigs;
 import com.flechazo.eos.data.bubble.SurvivorBubbleDefinition;
 import com.flechazo.eos.data.trade.ProfessionDefinition;
 import com.flechazo.eos.entity.ai.goal.SurvivorAiUtil;
+import com.flechazo.eos.profile.SurvivorAffiliations;
+import com.flechazo.eos.profile.SurvivorProfile;
 import com.flechazo.hkt.Maybe;
 import com.flechazo.hkt.business.core.Attempts;
 import com.mrbysco.nbt.network.message.AddBubblePayload;
@@ -25,6 +28,9 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
 import net.minecraft.world.entity.monster.CrossbowAttackMob;
 import net.minecraft.world.entity.monster.RangedAttackMob;
@@ -56,12 +62,17 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
     protected static final String NBT_SKIN_USERNAME = "EosSkinUsername";
     protected static final String NBT_PROFESSION_ID = "EosProfessionId";
     private static final String NBT_TACTICAL = "EosTactical";
+    private static final ResourceLocation PROFILE_ATTACK_MODIFIER = modifierId("profile_attack_damage");
+    private static final ResourceLocation PROFILE_HEALTH_MODIFIER = modifierId("profile_max_health");
+    private static final ResourceLocation PROFILE_SPEED_MODIFIER = modifierId("profile_movement_speed");
+    private static final ResourceLocation PROFILE_KNOCKBACK_MODIFIER = modifierId("profile_knockback_resistance");
 
     protected boolean chargingCrossbow = false;
     protected int lastCombatTick = -100000;
     @Nullable private LivingEntity bubbleTrackedTarget;
     private int bubbleLastTargetSeenTick = -100000;
     private final Map<String, Integer> bubbleCooldowns = new HashMap<>();
+    @Nullable private SurvivorProfile survivorProfile;
 
     public final ItemStackHandler tacticalInventory = new ItemStackHandler(10);
 
@@ -94,6 +105,7 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
         if (uuid != null) {
             EosDatapackIndex.skinLibraryUsername(uuid).ifPresent(this::setSkinUsername);
         }
+        updateProfileSkin();
     }
 
     public Maybe<String> getSkinUsername() {
@@ -102,6 +114,7 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
 
     public void setSkinUsername(@Nullable String username) {
         this.entityData.set(SKIN_USERNAME, username != null ? username.trim() : "");
+        updateProfileSkin();
     }
 
     public void setSkinProfile(@Nullable EosDatapackIndex.SkinProfile profile) {
@@ -136,13 +149,78 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
 
     public void setProfessionId(ResourceLocation id) {
         this.entityData.set(PROFESSION_ID, id != null ? id.toString() : "");
+        if (this.survivorProfile != null) {
+            this.survivorProfile = this.survivorProfile.withProfession(id);
+        }
+    }
+
+    public Maybe<SurvivorProfile> getSurvivorProfile() {
+        return Maybe.ofNullable(this.survivorProfile);
+    }
+
+    public ResourceLocation getAffiliationId() {
+        if (this.survivorProfile != null) return this.survivorProfile.affiliationId();
+        if (this instanceof HostileSurvivorEntity) return SurvivorAffiliations.RAIDER;
+        return SurvivorAffiliations.INDEPENDENT;
+    }
+
+    public SurvivorProfile.Temperament getTemperament() {
+        return this.survivorProfile == null
+                ? SurvivorProfile.Temperament.CAUTIOUS
+                : this.survivorProfile.temperament();
+    }
+
+    public boolean hasSpecialty(SurvivorProfile.Specialty specialty) {
+        return this.survivorProfile != null && this.survivorProfile.specialties().contains(specialty);
+    }
+
+    public float retreatHealthThreshold(float baseThreshold) {
+        EosConfigs.TraitConfig config = EosConfigs.TRAITS.get();
+        double adjusted = switch (getTemperament()) {
+            case CAUTIOUS -> baseThreshold + config.cautiousRetreatThresholdBonus();
+            case TIMID -> baseThreshold + config.timidRetreatThresholdBonus();
+            case BRAVE -> baseThreshold - config.braveRetreatThresholdReduction();
+            default -> baseThreshold;
+        };
+        return (float) Math.clamp(adjusted, 0.0, 1.0);
+    }
+
+    public double fleeSpeedMultiplier() {
+        return getTemperament() == SurvivorProfile.Temperament.TIMID ? 1.05D : 1.0D;
+    }
+
+    protected void ensureSurvivorProfile(MobSpawnType spawnType) {
+        if (this.level().isClientSide || this.survivorProfile != null) return;
+        ResourceLocation dimension = this.level().dimension().location();
+        this.survivorProfile = SurvivorProfile.create(
+                this.getUUID(),
+                getSkinUuid().fold(() -> null, uuid -> uuid),
+                getSkinUsername().orElse(""),
+                getAffiliationId(),
+                getProfessionId().fold(() -> null, id -> id),
+                spawnType,
+                this.level().getGameTime(),
+                dimension,
+                this.blockPosition()
+        );
+        applyProfileModifiers();
+    }
+
+    private void updateProfileSkin() {
+        if (this.survivorProfile == null) return;
+        this.survivorProfile = this.survivorProfile.withSkin(
+                getSkinUuid().fold(() -> null, uuid -> uuid),
+                getSkinUsername().orElse("")
+        );
     }
 
     @Override
     public Component getDisplayName() {
-        Component name = getSkinUsername()
+        Component name = getSurvivorProfile()
+                .<Component>map(profile -> Component.literal(profile.name()))
+                .orElseGet(() -> getSkinUsername()
                 .<Component>map(Component::literal)
-                .orElseGet(super::getDisplayName);
+                .orElseGet(super::getDisplayName));
         Maybe<ResourceLocation> professionId = getProfessionId();
         if (professionId.isEmpty()) {
             return name;
@@ -163,7 +241,17 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
     }
 
     protected void assignRandomProfession() {
-        var prof = EosDatapackIndex.randomProfession();
+        assignRandomProfession(null);
+    }
+
+    protected void assignRandomProfession(@Nullable MobSpawnType spawnType) {
+        String encounter = spawnType == null ? null : switch (spawnType) {
+            case STRUCTURE -> "structure";
+            case EVENT, TRIGGERED -> "event";
+            default -> "wilderness";
+        };
+        var prof = EosDatapackIndex.randomProfession(
+                new java.util.Random(this.random.nextLong()), encounter, getAffiliationId());
         prof.ifPresent(p -> {
             setProfessionId(p.id());
             applyProfessionEquipment(p);
@@ -269,6 +357,9 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
         getSkinUsername().ifPresent(username -> tag.putString(NBT_SKIN_USERNAME, username));
         getProfessionId().ifPresent(id -> tag.putString(NBT_PROFESSION_ID, id.toString()));
         tag.put(NBT_TACTICAL, tacticalInventory.serializeNBT(this.registryAccess()));
+        if (this.survivorProfile != null) {
+            tag.put(SurvivorProfile.NBT_KEY, this.survivorProfile.save());
+        }
     }
 
     @Override
@@ -295,6 +386,13 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
                 tacticalInventory.setSize(10);
             }
         }
+        SurvivorProfile.load(tag).ifPresent(profile -> {
+            this.survivorProfile = profile;
+            if (profile.skinUuid() != null) this.entityData.set(SKIN_UUID, profile.skinUuid().toString());
+            if (!profile.skinName().isBlank()) this.entityData.set(SKIN_USERNAME, profile.skinName());
+            if (profile.professionId() != null) this.entityData.set(PROFESSION_ID, profile.professionId().toString());
+            applyProfileModifiers();
+        });
     }
 
     protected void applyArmorSet(ResourceLocation armorSetId) {
@@ -350,7 +448,9 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
         double dy = target.getY(0.3333333333333333D) - arrow.getY();
         double dz = target.getZ() - this.getZ();
         double d3 = Math.sqrt(dx * dx + dz * dz);
-        arrow.shoot(dx, dy + d3 * 0.2F, dz, 1.6F, (float) (14 - this.level().getDifficulty().getId() * 4));
+        float inaccuracy = (float) (14 - this.level().getDifficulty().getId() * 4);
+        if (hasSpecialty(SurvivorProfile.Specialty.STEADY_HAND)) inaccuracy *= 0.90F;
+        arrow.shoot(dx, dy + d3 * 0.2F, dz, 1.6F, inaccuracy);
         this.level().addFreshEntity(arrow);
         weapon.hurtAndBreak(1, this, LivingEntity.getSlotForHand(hand));
     }
@@ -428,10 +528,44 @@ public abstract class AbstractSurvivorEntity extends WanderingTrader
     public void aiStep() {
         super.aiStep();
         if (!this.level().isClientSide) {
+            ensureSurvivorProfile(null);
             ensureSkinUsernameAssigned();
             tickReactiveShield();
             tickBubbleEvents();
         }
+    }
+
+    private void applyProfileModifiers() {
+        if (this.level().isClientSide || this.survivorProfile == null) return;
+        var config = EosConfigs.TRAITS.get();
+        double attackBonus = this.survivorProfile.temperament() == SurvivorProfile.Temperament.AGGRESSIVE
+                ? config.aggressiveAttackDamageBonus() : 0.0D;
+        double healthBonus = hasSpecialty(SurvivorProfile.Specialty.TOUGH) ? config.toughMaxHealthBonus() : 0.0D;
+        double speedBonus = hasSpecialty(SurvivorProfile.Specialty.AGILE) ? config.agileMovementSpeedBonus() : 0.0D;
+        double knockbackBonus = 0.0D;
+        if (this.survivorProfile.temperament() == SurvivorProfile.Temperament.BRAVE) {
+            knockbackBonus += config.braveKnockbackResistanceBonus();
+        }
+        if (hasSpecialty(SurvivorProfile.Specialty.VETERAN)) {
+            knockbackBonus += config.veteranKnockbackResistanceBonus();
+        }
+        replaceModifier(Attributes.ATTACK_DAMAGE, PROFILE_ATTACK_MODIFIER, attackBonus, AttributeModifier.Operation.ADD_MULTIPLIED_BASE);
+        replaceModifier(Attributes.MAX_HEALTH, PROFILE_HEALTH_MODIFIER, healthBonus, AttributeModifier.Operation.ADD_VALUE);
+        replaceModifier(Attributes.MOVEMENT_SPEED, PROFILE_SPEED_MODIFIER, speedBonus, AttributeModifier.Operation.ADD_MULTIPLIED_BASE);
+        replaceModifier(Attributes.KNOCKBACK_RESISTANCE, PROFILE_KNOCKBACK_MODIFIER, knockbackBonus, AttributeModifier.Operation.ADD_VALUE);
+        if (this.getHealth() > this.getMaxHealth()) this.setHealth(this.getMaxHealth());
+    }
+
+    private void replaceModifier(net.minecraft.core.Holder<net.minecraft.world.entity.ai.attributes.Attribute> attribute,
+                                 ResourceLocation id, double amount, AttributeModifier.Operation operation) {
+        var instance = this.getAttribute(attribute);
+        if (instance == null) return;
+        instance.removeModifier(id);
+        if (amount != 0.0D) instance.addPermanentModifier(new AttributeModifier(id, amount, operation));
+    }
+
+    private static ResourceLocation modifierId(String path) {
+        return ResourceLocation.fromNamespaceAndPath(com.flechazo.eos.EchoesofSurvival.MODID, path);
     }
 
     private void tickReactiveShield() {

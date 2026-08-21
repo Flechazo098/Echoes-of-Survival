@@ -3,9 +3,13 @@ package com.flechazo.eos;
 
 import com.flechazo.eos.entity.FriendlySurvivorEntity;
 import com.flechazo.eos.entity.AbstractSurvivorEntity;
+import com.flechazo.eos.encounter.SurvivorEncounterManager;
 import com.flechazo.eos.quest.QuestApi;
 import com.flechazo.eos.reputation.EosAttachments;
+import com.flechazo.eos.reputation.ReputationEventService;
+import com.flechazo.eos.squad.SquadApi;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -24,6 +28,7 @@ public final class EosGameEvents {
     }
 
     public static void register() {
+        SurvivorEncounterManager.register();
         NeoForge.EVENT_BUS.addListener(EosGameEvents::onRegisterCommands);
         NeoForge.EVENT_BUS.addListener(EosGameEvents::onLivingDeath);
         NeoForge.EVENT_BUS.addListener(EosGameEvents::onPlayerLogin);
@@ -47,6 +52,14 @@ public final class EosGameEvents {
 
     private static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            ReputationEventService.getState(player);
+            for (ServerLevel level : player.server.getAllLevels()) {
+                for (Entity entity : level.getAllEntities()) {
+                    if (entity instanceof FriendlySurvivorEntity survivor && survivor.isRecruitOwner(player)) {
+                        SquadApi.addMember(player, survivor.getUUID());
+                    }
+                }
+            }
             player.syncData(EosAttachments.PLAYER_REPUTATION.get());
         }
     }

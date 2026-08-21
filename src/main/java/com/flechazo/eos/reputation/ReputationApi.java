@@ -8,17 +8,17 @@ public final class ReputationApi {
     }
 
     public static int get(Player player) {
+        if (player instanceof ServerPlayer serverPlayer) {
+            return ReputationEventService.global(serverPlayer);
+        }
         return player.getData(EosAttachments.PLAYER_REPUTATION.get());
     }
 
     public static void set(ServerPlayer player, int value) {
-        player.setData(EosAttachments.PLAYER_REPUTATION.get(), value);
-        player.syncData(EosAttachments.PLAYER_REPUTATION.get());
+        ReputationEventService.setGlobal(player, value, "legacy_api_set");
     }
 
     public static void add(ServerPlayer player, int delta) {
-        int next = get(player) + delta;
-        set(player, next);
+        ReputationEventService.apply(player, "legacy_api_add", delta, null, 0, null, 0);
     }
 }
-

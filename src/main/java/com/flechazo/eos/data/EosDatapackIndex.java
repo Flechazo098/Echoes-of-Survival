@@ -210,9 +210,32 @@ public final class EosDatapackIndex {
     }
 
     public static Maybe<ProfessionDefinition> randomProfession() {
-        if (professionsById.isEmpty()) return Maybe.none();
-        int idx = (int) (Math.random() * professionsById.size());
-        return Pathway.listPath(professionsById.values().stream().toList()).get(idx).run();
+        return randomProfession(new Random(), null, null);
+    }
+
+    public static Maybe<ProfessionDefinition> randomProfession(
+            Random random,
+            String encounter,
+            ResourceLocation factionId
+    ) {
+        List<ProfessionDefinition> candidates = professionsById.values().stream()
+                .filter(definition -> encounter == null || definition.allowedEncounters().isEmpty()
+                        || definition.allowedEncounters().contains(encounter))
+                .toList();
+        if (candidates.isEmpty()) return Maybe.none();
+        int totalWeight = candidates.stream().mapToInt(definition -> professionWeight(definition, factionId)).sum();
+        if (totalWeight <= 0) return Maybe.none();
+        int roll = random.nextInt(totalWeight);
+        for (ProfessionDefinition definition : candidates) {
+            roll -= professionWeight(definition, factionId);
+            if (roll < 0) return Maybe.some(definition);
+        }
+        return Maybe.some(candidates.getLast());
+    }
+
+    private static int professionWeight(ProfessionDefinition definition, ResourceLocation factionId) {
+        int factionWeight = factionId == null ? 100 : definition.factionWeights().getOrDefault(factionId, 100);
+        return Math.max(0, definition.rarity() * factionWeight / 100);
     }
 
     public static boolean matches(ItemStack stack) {

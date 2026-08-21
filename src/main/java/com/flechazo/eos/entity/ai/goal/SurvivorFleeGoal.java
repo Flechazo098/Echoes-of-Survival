@@ -1,5 +1,6 @@
 package com.flechazo.eos.entity.ai.goal;
 
+import com.flechazo.eos.entity.AbstractSurvivorEntity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.goal.Goal;
@@ -46,7 +47,7 @@ public class SurvivorFleeGoal extends Goal {
             cooldownTicks--;
             return false;
         }
-        if (!SurvivorAiUtil.isLowHp(mob, hpPercent)) return false;
+        if (!SurvivorAiUtil.isLowHp(mob, effectiveHpPercent())) return false;
         if (SurvivorAiUtil.hasTotemInOffhand(mob)) return false;
         if (chance < 1.0F && mob.getRandom().nextFloat() > chance) return false;
 
@@ -80,7 +81,7 @@ public class SurvivorFleeGoal extends Goal {
 
     @Override
     public boolean canContinueToUse() {
-        if (!SurvivorAiUtil.isLowHp(mob, hpPercent)) return false;
+        if (!SurvivorAiUtil.isLowHp(mob, effectiveHpPercent())) return false;
         if (this.threat == null || !this.threat.isAlive()) return false;
         if (this.threat instanceof Player p && (p.isCreative() || p.isSpectator())) return false;
         if (this.mob.distanceToSqr(this.threat) > (double) (maxThreatDist * maxThreatDist)) return false;
@@ -93,7 +94,7 @@ public class SurvivorFleeGoal extends Goal {
             this.navigation.stop();
             generatePathAway();
             if (this.path != null) {
-                this.navigation.moveTo(this.path, this.walkSpeed);
+                this.navigation.moveTo(this.path, adjustedSpeed(this.walkSpeed));
             }
         }
 
@@ -103,7 +104,7 @@ public class SurvivorFleeGoal extends Goal {
     @Override
     public void start() {
         if (this.path != null) {
-            this.navigation.moveTo(this.path, this.walkSpeed);
+            this.navigation.moveTo(this.path, adjustedSpeed(this.walkSpeed));
         }
     }
 
@@ -120,6 +121,19 @@ public class SurvivorFleeGoal extends Goal {
         if (this.threat == null) return;
 
         double distSqr = this.mob.distanceToSqr(this.threat);
-        this.mob.getNavigation().setSpeedModifier(distSqr < 7.0 * 7.0 ? this.sprintSpeed : this.walkSpeed);
+        this.mob.getNavigation().setSpeedModifier(adjustedSpeed(
+                distSqr < 7.0 * 7.0 ? this.sprintSpeed : this.walkSpeed));
+    }
+
+    private float effectiveHpPercent() {
+        return mob instanceof AbstractSurvivorEntity survivor
+                ? survivor.retreatHealthThreshold(hpPercent)
+                : hpPercent;
+    }
+
+    private double adjustedSpeed(double speed) {
+        return mob instanceof AbstractSurvivorEntity survivor
+                ? speed * survivor.fleeSpeedMultiplier()
+                : speed;
     }
 }
